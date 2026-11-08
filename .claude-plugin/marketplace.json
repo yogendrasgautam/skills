@@ -22,7 +22,7 @@
       "name": "software-factory",
       "source": "./software-factory",
       "description": "A hands-off software factory: role agents take a feature from spec to merged branch (spec → build → 4 parallel reviews → approve), using the engineering-pipeline skills, with a live dashboard.",
-      "version": "0.1.0",
+      "version": "0.2.0",
       "category": "Engineering"
     }
   ]
