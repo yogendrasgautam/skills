@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Commerce — ER model</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --paper:#fbfaf8; --paper-2:#f1efea; --ink:#23262d; --muted:#5a616e;
+    --soft:#8a919d; --rule:rgba(35,38,45,0.12); --rule-solid:#cfd2d6;
+    --accent:#0f766e; --accent-tint:rgba(15,118,110,0.10);
+    --link:#2563eb; --danger:#b4432f;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{
+      --paper:#1a1d23; --paper-2:#23272f; --ink:#eceef1; --muted:#aeb4bf;
+      --soft:#7b828e; --rule:rgba(236,238,241,0.12); --rule-solid:rgba(236,238,241,0.22);
+      --accent:#2dd4bf; --accent-tint:rgba(45,212,191,0.12);
+      --link:#6ea0f0; --danger:#e07a63;
+    }
+  }
+  body{margin:0;background:var(--paper);color:var(--ink);font-family:'Inter',system-ui,sans-serif;}
+  .wrap{max-width:1000px;margin:0 auto;padding:40px 24px;}
+  .eyebrow{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:8px;letter-spacing:.16em;text-transform:uppercase;color:var(--soft);}
+  h1{font-family:'Fraunces',Georgia,serif;font-weight:400;font-size:28px;margin:2px 0 18px;}
+  svg{width:100%;height:auto;display:block;}
+  .caption{color:var(--muted);font-size:13px;margin-top:16px;max-width:62ch;}
+  .hdr{font-family:Inter,sans-serif;font-weight:600;font-size:13px;fill:var(--ink);}
+  .attr{font-family:'JetBrains Mono',monospace;font-size:10px;fill:var(--ink);}
+  .typ{font-family:'JetBrains Mono',monospace;font-size:10px;fill:var(--soft);}
+  .chip{font-family:'JetBrains Mono',monospace;font-size:7px;letter-spacing:.08em;fill:var(--accent);}
+  .rel{font-family:'JetBrains Mono',monospace;font-size:9px;fill:var(--muted);}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="eyebrow">ER / data model</div>
+  <h1>Commerce</h1>
+  <svg viewBox="0 0 920 400" role="img" aria-label="ER model: a customer places many orders; each order contains many line items; each product is ordered in many line items.">
+    <defs>
+      <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="var(--muted)"/></marker>
+    </defs>
+
+    <!-- relationships (crow's foot): drawn first -->
+    <!-- CUSTOMER (1) to ORDER (many, optional) : places -->
+    <line x1="250" y1="150" x2="350" y2="150" stroke="var(--muted)" stroke-width="1.2"/>
+    <line x1="266" y1="142" x2="266" y2="158" stroke="var(--muted)" stroke-width="1.2"/>
+    <circle cx="332" cy="150" r="3" fill="none" stroke="var(--muted)" stroke-width="1.2"/>
+    <path d="M342,150 L350,142 M342,150 L350,158 M342,150 L350,150" fill="none" stroke="var(--muted)" stroke-width="1.2"/>
+    <rect x="276" y="133" width="48" height="14" rx="2" fill="var(--paper)"/>
+    <text x="300" y="143" text-anchor="middle" class="rel">places</text>
+
+    <!-- ORDER (1) to LINE_ITEM (many) : contains -->
+    <line x1="550" y1="150" x2="650" y2="150" stroke="var(--muted)" stroke-width="1.2"/>
+    <line x1="566" y1="142" x2="566" y2="158" stroke="var(--muted)" stroke-width="1.2"/>
+    <line x1="634" y1="142" x2="634" y2="158" stroke="var(--muted)" stroke-width="1.2"/>
+    <path d="M642,150 L650,142 M642,150 L650,158 M642,150 L650,150" fill="none" stroke="var(--muted)" stroke-width="1.2"/>
+    <rect x="570" y="133" width="60" height="14" rx="2" fill="var(--paper)"/>
+    <text x="600" y="143" text-anchor="middle" class="rel">contains</text>
+
+    <!-- PRODUCT (1) to LINE_ITEM (many, optional) : ordered in (vertical) -->
+    <line x1="750" y1="250" x2="750" y2="206" stroke="var(--muted)" stroke-width="1.2"/>
+    <line x1="742" y1="242" x2="758" y2="242" stroke="var(--muted)" stroke-width="1.2"/>
+    <circle cx="750" cy="222" r="3" fill="none" stroke="var(--muted)" stroke-width="1.2"/>
+    <path d="M750,214 L742,206 M750,214 L758,206 M750,214 L750,206" fill="none" stroke="var(--muted)" stroke-width="1.2"/>
+    <rect x="758" y="221" width="66" height="14" rx="2" fill="var(--paper)"/>
+    <text x="791" y="231" text-anchor="middle" class="rel">ordered in</text>
+
+    <!-- ===== CUSTOMER ===== -->
+    <g>
+      <rect x="70" y="90" width="180" height="86" rx="8" fill="var(--paper)" stroke="var(--rule-solid)" stroke-width="1.2"/>
+      <path d="M70,98 a8,8 0 0 1 8,-8 H242 a8,8 0 0 1 8,8 V116 H70 Z" fill="var(--paper-2)"/>
+      <text x="84" y="110" class="hdr">CUSTOMER</text>
+      <rect x="80" y="122" width="18" height="11" rx="2" fill="var(--accent-tint)"/>
+      <text x="83" y="130" class="chip">PK</text>
+      <text x="104" y="131" class="attr">id</text><text x="240" y="131" text-anchor="end" class="typ">uuid</text>
+      <text x="104" y="151" class="attr">email</text><text x="240" y="151" text-anchor="end" class="typ">string</text>
+      <text x="104" y="171" class="attr">name</text><text x="240" y="171" text-anchor="end" class="typ">string</text>
+    </g>
+
+    <!-- ===== ORDER (focal) ===== -->
+    <g>
+      <rect x="370" y="90" width="180" height="86" rx="8" fill="var(--accent-tint)" stroke="var(--accent)" stroke-width="1.6"/>
+      <path d="M370,98 a8,8 0 0 1 8,-8 H542 a8,8 0 0 1 8,8 V116 H370 Z" fill="rgba(15,118,110,0.14)"/>
+      <text x="384" y="110" class="hdr">ORDER</text>
+      <rect x="380" y="122" width="18" height="11" rx="2" fill="var(--paper)"/>
+      <text x="383" y="130" class="chip">PK</text>
+      <text x="404" y="131" class="attr">id</text><text x="540" y="131" text-anchor="end" class="typ">uuid</text>
+      <rect x="380" y="142" width="18" height="11" rx="2" fill="var(--paper)"/>
+      <text x="383" y="150" class="chip" fill="var(--muted)">FK</text>
+      <text x="404" y="151" class="attr">customer_id</text><text x="540" y="151" text-anchor="end" class="typ">uuid</text>
+      <text x="404" y="171" class="attr">placed_at</text><text x="540" y="171" text-anchor="end" class="typ">timestamp</text>
+    </g>
+
+    <!-- ===== LINE_ITEM ===== -->
+    <g>
+      <rect x="670" y="90" width="180" height="116" rx="8" fill="var(--paper)" stroke="var(--rule-solid)" stroke-width="1.2"/>
+      <path d="M670,98 a8,8 0 0 1 8,-8 H842 a8,8 0 0 1 8,8 V116 H670 Z" fill="var(--paper-2)"/>
+      <text x="684" y="110" class="hdr">LINE_ITEM</text>
+      <rect x="680" y="122" width="18" height="11" rx="2" fill="var(--accent-tint)"/>
+      <text x="683" y="130" class="chip">PK</text>
+      <text x="704" y="131" class="attr">id</text><text x="840" y="131" text-anchor="end" class="typ">uuid</text>
+      <rect x="680" y="142" width="18" height="11" rx="2" fill="var(--paper)"/>
+      <text x="683" y="150" class="chip" fill="var(--muted)">FK</text>
+      <text x="704" y="151" class="attr">order_id</text><text x="840" y="151" text-anchor="end" class="typ">uuid</text>
+      <rect x="680" y="162" width="18" height="11" rx="2" fill="var(--paper)"/>
+      <text x="683" y="170" class="chip" fill="var(--muted)">FK</text>
+      <text x="704" y="171" class="attr">product_id</text><text x="840" y="171" text-anchor="end" class="typ">uuid</text>
+      <text x="704" y="191" class="attr">quantity</text><text x="840" y="191" text-anchor="end" class="typ">int</text>
+    </g>
+
+    <!-- ===== PRODUCT ===== -->
+    <g>
+      <rect x="670" y="250" width="180" height="86" rx="8" fill="var(--paper)" stroke="var(--rule-solid)" stroke-width="1.2"/>
+      <path d="M670,258 a8,8 0 0 1 8,-8 H842 a8,8 0 0 1 8,8 V276 H670 Z" fill="var(--paper-2)"/>
+      <text x="684" y="270" class="hdr">PRODUCT</text>
+      <rect x="680" y="282" width="18" height="11" rx="2" fill="var(--accent-tint)"/>
+      <text x="683" y="290" class="chip">PK</text>
+      <text x="704" y="291" class="attr">id</text><text x="840" y="291" text-anchor="end" class="typ">uuid</text>
+      <text x="704" y="311" class="attr">name</text><text x="840" y="311" text-anchor="end" class="typ">string</text>
+      <text x="704" y="331" class="attr">price</text><text x="840" y="331" text-anchor="end" class="typ">numeric</text>
+    </g>
+  </svg>
+  <p class="caption">Crow's-foot ends read the cardinality: one customer places many orders, each order holds one-or-more line items, and each product appears in zero-or-many of them.</p>
+</div>
+</body>
+</html>

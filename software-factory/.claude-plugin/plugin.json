@@ -1,0 +1,16 @@
+{
+  "name": "software-factory",
+  "version": "0.2.0",
+  "description": "A hands-off software factory: /software-factory:factory runs a feature through role agents — planner → spec-writer → builder → four parallel reviewers (security, ux, ui, code) → approver → merge to main or needs-human — each applying bundled engineering skills (tdd, spec, code-review, …). State lives in the project's factory/ folder with a live dashboard.",
+  "author": {
+    "name": "Yogendra Gautam"
+  },
+  "keywords": [
+    "factory",
+    "agents",
+    "orchestration",
+    "code-review",
+    "tdd",
+    "dashboard"
+  ]
+}

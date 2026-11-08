@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Org structure — tree</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --paper:#fbfaf8; --paper-2:#f1efea; --ink:#23262d; --muted:#5a616e;
+    --soft:#8a919d; --rule:rgba(35,38,45,0.12); --rule-solid:#cfd2d6;
+    --accent:#0f766e; --accent-tint:rgba(15,118,110,0.10);
+    --link:#2563eb; --danger:#b4432f;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{
+      --paper:#1a1d23; --paper-2:#23272f; --ink:#eceef1; --muted:#aeb4bf;
+      --soft:#7b828e; --rule:rgba(236,238,241,0.12); --rule-solid:rgba(236,238,241,0.22);
+      --accent:#2dd4bf; --accent-tint:rgba(45,212,191,0.12);
+      --link:#6ea0f0; --danger:#e07a63;
+    }
+  }
+  body{margin:0;background:var(--paper);color:var(--ink);font-family:'Inter',system-ui,sans-serif;}
+  .wrap{max-width:920px;margin:0 auto;padding:40px 24px;}
+  .eyebrow{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:8px;letter-spacing:.16em;text-transform:uppercase;color:var(--soft);}
+  h1{font-family:'Fraunces',Georgia,serif;font-weight:400;font-size:28px;margin:2px 0 18px;}
+  svg{width:100%;height:auto;display:block;}
+  .caption{color:var(--muted);font-size:13px;margin-top:16px;max-width:62ch;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="eyebrow">Tree</div>
+  <h1>Org structure</h1>
+  <svg viewBox="0 0 820 400" role="img" aria-label="Org tree: Company splits into Engineering and Operations; Engineering into Backend and Frontend; Operations into Support and Finance.">
+    <!-- comb routing (no arrowheads: hierarchy is positional) -->
+    <!-- root -> level 2 -->
+    <path d="M410,84 V140 M200,140 H620 M200,140 V176 M620,140 V176" fill="none" stroke="var(--rule-solid)" stroke-width="1.2"/>
+    <!-- Engineering -> children -->
+    <path d="M200,224 V290 M120,290 H300 M120,290 V318 M300,290 V318" fill="none" stroke="var(--rule-solid)" stroke-width="1.2"/>
+    <!-- Operations -> children -->
+    <path d="M620,224 V290 M540,290 H700 M540,290 V318 M700,290 V318" fill="none" stroke="var(--rule-solid)" stroke-width="1.2"/>
+
+    <!-- root (focal) -->
+    <rect x="340" y="36" width="140" height="48" rx="8" fill="var(--accent-tint)" stroke="var(--accent)" stroke-width="1.6"/>
+    <text x="410" y="64" text-anchor="middle" font-family="Inter,sans-serif" font-size="14" font-weight="600" fill="var(--ink)">Company</text>
+
+    <!-- level 2 -->
+    <rect x="125" y="176" width="150" height="48" rx="8" fill="var(--paper)" stroke="var(--rule-solid)" stroke-width="1.2"/>
+    <text x="200" y="204" text-anchor="middle" font-family="Inter,sans-serif" font-size="13" font-weight="600" fill="var(--ink)">Engineering</text>
+    <rect x="545" y="176" width="150" height="48" rx="8" fill="var(--paper)" stroke="var(--rule-solid)" stroke-width="1.2"/>
+    <text x="620" y="204" text-anchor="middle" font-family="Inter,sans-serif" font-size="13" font-weight="600" fill="var(--ink)">Operations</text>
+
+    <!-- leaves (lighter) -->
+    <rect x="60" y="318" width="120" height="44" rx="8" fill="var(--paper)" stroke="var(--rule)" stroke-width="1"/>
+    <text x="120" y="344" text-anchor="middle" font-family="Inter,sans-serif" font-size="12" font-weight="500" fill="var(--muted)">Backend</text>
+    <rect x="240" y="318" width="120" height="44" rx="8" fill="var(--paper)" stroke="var(--rule)" stroke-width="1"/>
+    <text x="300" y="344" text-anchor="middle" font-family="Inter,sans-serif" font-size="12" font-weight="500" fill="var(--muted)">Frontend</text>
+    <rect x="480" y="318" width="120" height="44" rx="8" fill="var(--paper)" stroke="var(--rule)" stroke-width="1"/>
+    <text x="540" y="344" text-anchor="middle" font-family="Inter,sans-serif" font-size="12" font-weight="500" fill="var(--muted)">Support</text>
+    <rect x="640" y="318" width="120" height="44" rx="8" fill="var(--paper)" stroke="var(--rule)" stroke-width="1"/>
+    <text x="700" y="344" text-anchor="middle" font-family="Inter,sans-serif" font-size="12" font-weight="500" fill="var(--muted)">Finance</text>
+  </svg>
+  <p class="caption">A shared trunk and bus per parent keep the branches untangled; leaves sit lighter so the branching structure, not the boxes, carries the eye.</p>
+</div>
+</body>
+</html>

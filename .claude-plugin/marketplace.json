@@ -1,0 +1,29 @@
+{
+  "name": "engineering-skills",
+  "owner": {
+    "name": "Yogendra Gautam"
+  },
+  "plugins": [
+    {
+      "name": "diagram-studio",
+      "source": "./diagram-studio",
+      "description": "Generate clean, editorial diagrams (architecture, flowchart, sequence, state machine, ER/data model, timeline, tree, database schema) as self-contained HTML/SVG, with an optional Mermaid output.",
+      "version": "0.1.1",
+      "category": "Engineering"
+    },
+    {
+      "name": "engineering-pipeline",
+      "source": "./engineering-skills",
+      "description": "The 5-step engineering pipeline (wayfinder/grill-with-docs → to-spec → to-tickets → implement → code-review) plus supporting disciplines.",
+      "version": "0.2.0",
+      "category": "Engineering"
+    },
+    {
+      "name": "software-factory",
+      "source": "./software-factory",
+      "description": "A hands-off software factory: role agents take a feature from spec to merged branch (spec → build → 4 parallel reviews → approve), using the engineering-pipeline skills, with a live dashboard.",
+      "version": "0.1.0",
+      "category": "Engineering"
+    }
+  ]
+}

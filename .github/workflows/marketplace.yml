@@ -1,0 +1,136 @@
+name: marketplace
+
+# One workflow for the generated catalog: validate on every PR and push, then --
+# on a push to main, and only when there is something to reconcile -- regenerate
+# marketplace.json from the per-plugin fragments and push the result back, linting
+# again afterwards.
+#
+# marketplace.json is GENERATED, and only this workflow's regen job writes it. A PR
+# adds or updates a plugin by shipping a per-plugin
+# `.claude-plugin/marketplace-entry.json` fragment, and deletes one by removing its
+# directory -- never by editing the catalog, which is guarded below. Each change then
+# touches only its own plugin directory, so two changes can never conflict.
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      needs_regen: ${{ steps.gate.outputs.needs_regen }}
+    steps:
+      # Full history: the PR guard below diffs against the base ref.
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      # No setup-python: the runner ships python3 and the tooling is stdlib-only.
+      # This also means the suite is exercised on the runner's 3.12+ as well as the
+      # 3.9 it runs on locally.
+      - name: unit tests
+        run: python3 -m unittest discover -s tools -p 'test_*.py' -v
+      - name: validate fragments
+        run: python3 tools/marketplace.py lint
+      # The catalog is generated, and only the regen job on main writes it. A PR that
+      # adds, updates or deletes a plugin ships its own plugin directory and nothing
+      # else -- a fragment, or the deletion -- so marketplace.json must not appear in
+      # the diff at all. That is what keeps two changes in flight from ever colliding.
+      #
+      # The label is the escape hatch for a deliberate repair (a bad generated state,
+      # or the --force-prune case), which is the only reason to touch the file by hand.
+      - name: catalog must not be edited in a PR
+        if: >-
+          github.event_name == 'pull_request'
+          && !contains(github.event.pull_request.labels.*.name, 'catalog-override')
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          git fetch --no-tags origin "$BASE_REF"
+          if git diff --name-only "origin/$BASE_REF...HEAD" \
+               | grep -qx '.claude-plugin/marketplace.json'; then
+            echo "::error file=.claude-plugin/marketplace.json::The catalog is generated and is written only by the regen job on main. Drop this file from your PR (git checkout origin/$BASE_REF -- .claude-plugin/marketplace.json) and ship just your plugin's marketplace-entry.json -- regen adds the entry after the merge. If this PR really must hand-fix the catalog, add the 'catalog-override' label."
+            exit 1
+          fi
+      # The regen gate, in one command. `would_change()` is `root_changed or
+      # deleted_fragments`, so this exits 2 when EITHER a fragment is waiting to be
+      # folded in and consumed OR the catalog itself drifted (a version refreshed
+      # from plugin.json, or an entry to prune for a deleted plugin). Plain
+      # `apply --check` would not do: an already-folded fragment reports "up to
+      # date" while regen still has work -- deleting it.
+      #
+      # --check writes and unlinks nothing, so this job stays read-only.
+      #   0 -> nothing to reconcile, skip regen
+      #   2 -> reconcile
+      #   1 -> invalid fragment/catalog, or a prune guard tripped: fail loudly
+      - name: does the catalog need reconciling?
+        id: gate
+        if: github.event_name == 'push'
+        run: |
+          set +e
+          python3 tools/marketplace.py apply --check --delete-fragments
+          rc=$?
+          set -e
+          case "$rc" in
+            0) echo "needs_regen=false" >> "$GITHUB_OUTPUT" ;;
+            2) echo "needs_regen=true"  >> "$GITHUB_OUTPUT" ;;
+            *)
+              # Almost always one of apply()'s prune guards: every entry would be
+              # pruned (deleting the last plugin), or no plugin manifest was found
+              # anywhere (a bad checkout). Neither is safe to do unattended.
+              echo "::error file=.claude-plugin/marketplace.json::Reconcile refused (exit $rc). If the catalog really should lose those entries -- e.g. the last plugin was deleted -- run \`python3 tools/marketplace.py apply --force-prune\` locally and commit the result. Otherwise the error above names the invalid fragment or entry to fix."
+              exit "$rc"
+              ;;
+          esac
+
+  # The backstop: running `make marketplace` locally before committing means the gate
+  # above reports nothing to do and this job never starts.
+  regen:
+    # Gated on a green `validate`: there is no point reconciling a catalog whose
+    # tooling tests or fragments are broken, and rewriting a shared file on main
+    # deserves that evidence first. The ref check is belt-and-braces on top of
+    # `branches: [main]` -- a PR run must never push to main.
+    needs: validate
+    if: >-
+      github.event_name == 'push'
+      && github.ref == 'refs/heads/main'
+      && needs.validate.outputs.needs_regen == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    # One reconcile at a time: two runs must never rewrite marketplace.json
+    # concurrently. Queued, not cancelled. GitHub keeps at most one *pending* run per
+    # group, which is safe here -- marketplace-regen.sh fetches and hard-resets to the
+    # live origin/main on each attempt, so the in-flight run already picks up the
+    # newer push's fragments.
+    concurrency:
+      group: marketplace-regen
+      cancel-in-progress: false
+    steps:
+      # fetch-depth 1 is enough: the script fetches and hard-resets the branch itself.
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 1
+          # If `main` ever becomes branch-protected, GITHUB_TOKEN cannot push to it.
+          # Provide a GitHub App / PAT with push (and protected-branch bypass) access
+          # as the MARKETPLACE_REGEN_TOKEN secret; otherwise this falls back to
+          # GITHUB_TOKEN, which works while main is unprotected.
+          token: ${{ secrets.MARKETPLACE_REGEN_TOKEN || secrets.GITHUB_TOKEN }}
+      # Folds every fragment into the catalog, refreshes derived fields, prunes
+      # entries whose plugin is gone, deletes the merged fragments, and commits the
+      # result as [skip ci] so it never re-triggers this workflow.
+      - name: reconcile catalog and push
+        run: bash tools/marketplace-regen.sh
+      # Lint AFTER the regenerate, against the reconciled tree the script left behind.
+      - name: validate fragments (after regen)
+        run: python3 tools/marketplace.py lint
+      # Blocking: once the script has run, remaining drift means the generator
+      # disagrees with itself. That should be loud, not a warning.
+      - name: catalog is up to date (after regen)
+        run: python3 tools/marketplace.py apply --check

@@ -1,0 +1,18 @@
+# macOS
+.DS_Store
+
+# Editor / OS cruft
+*.swp
+Thumbs.db
+
+# Build artifacts
+*.zip
+
+# Python
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Claude Code local state (personal, per-machine — never publish)
+.claude/settings.local.json
+.playwright-mcp/

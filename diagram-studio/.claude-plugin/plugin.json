@@ -1,0 +1,23 @@
+{
+  "name": "diagram-studio",
+  "version": "0.1.1",
+  "description": "Generate clean, editorial diagrams — architecture, flowchart, sequence, state machine, ER/data model, timeline, tree, and database schema — as self-contained HTML with inline SVG (exportable to PNG/SVG), with an optional Mermaid output for docs and wikis.",
+  "author": {
+    "name": "Yogendra Gautam"
+  },
+  "keywords": [
+    "diagrams",
+    "svg",
+    "html",
+    "mermaid",
+    "architecture",
+    "flowchart",
+    "sequence",
+    "state-machine",
+    "er-model",
+    "database-schema",
+    "timeline",
+    "tree",
+    "visualization"
+  ]
+}

@@ -1,0 +1,172 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Order placement — sequence</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --paper:#fbfaf8; --paper-2:#f1efea; --ink:#23262d; --muted:#5a616e;
+    --soft:#8a919d; --rule:rgba(35,38,45,0.12); --rule-solid:#cfd2d6;
+    --accent:#0f766e; --accent-tint:rgba(15,118,110,0.10);
+    --link:#2563eb; --danger:#b4432f;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{
+      --paper:#1a1d23; --paper-2:#23272f; --ink:#eceef1; --muted:#aeb4bf;
+      --soft:#7b828e; --rule:rgba(236,238,241,0.12); --rule-solid:rgba(236,238,241,0.22);
+      --accent:#2dd4bf; --accent-tint:rgba(45,212,191,0.12);
+      --link:#6ea0f0; --danger:#e07a63;
+    }
+  }
+  body{margin:0;background:var(--paper);color:var(--ink);font-family:'Inter',system-ui,sans-serif;}
+  .wrap{max-width:900px;margin:0 auto;padding:40px 24px;}
+  .head{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-bottom:18px;}
+  .eyebrow{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:8px;letter-spacing:.16em;text-transform:uppercase;color:var(--soft);}
+  h1{font-family:'Fraunces',Georgia,serif;font-weight:400;font-size:28px;margin:2px 0 0;}
+  svg{width:100%;height:auto;display:block;}
+  .caption{color:var(--muted);font-size:13px;margin-top:16px;max-width:62ch;}
+
+  .controls{display:none;align-items:center;gap:6px;}
+  .motion-ready .controls{display:inline-flex;}
+  .controls button{font-family:'JetBrains Mono',monospace;font-size:12px;line-height:1;cursor:pointer;
+    border:1px solid var(--rule-solid);background:var(--paper);color:var(--ink);border-radius:8px;padding:6px 9px;}
+  .controls button:hover{border-color:var(--accent);color:var(--accent);}
+  .controls .play{min-width:74px;}
+  .controls .step{font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--soft);min-width:34px;text-align:center;}
+  .sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;}
+
+  .trail{display:none;}
+  .pf{display:none;}
+  .motion-ready .trail.done{display:inline;}
+  @media (prefers-reduced-motion: no-preference){
+    .motion-ready .pf.active{display:inline;stroke-dashoffset:100;animation:flow 1.5s linear infinite;}
+    @keyframes flow{to{stroke-dashoffset:0;}}
+  }
+</style>
+</head>
+<body>
+<div class="wrap" id="stage" data-motion="static">
+  <div class="head">
+    <div>
+      <div class="eyebrow">Sequence</div>
+      <h1>Order placement</h1>
+    </div>
+    <div class="controls" role="group" aria-label="Message playback">
+      <button type="button" data-act="prev" aria-label="Previous message">◀</button>
+      <button type="button" data-act="play" class="play" aria-label="Play messages">▶ Play</button>
+      <button type="button" data-act="next" aria-label="Next message">▶</button>
+      <span class="step" data-step-label aria-hidden="true">0 / 4</span>
+      <span class="sr" aria-live="polite" data-status>Static frame</span>
+    </div>
+  </div>
+  <svg viewBox="0 0 820 500" role="img" aria-label="Sequence diagram: client posts an order to the API, which inserts it in the store and returns an id, then responds 201; an alt also shows a 402 when the charge is declined. Playback steps a pulse through the messages in time order.">
+    <defs>
+      <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="var(--muted)"/></marker>
+      <marker id="arrow-accent" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="var(--accent)"/></marker>
+      <marker id="arrow-link" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="var(--link)"/></marker>
+      <marker id="arrow-danger" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="var(--danger)"/></marker>
+    </defs>
+
+    <line x1="110" y1="70" x2="110" y2="450" stroke="var(--rule)" stroke-width="1"/>
+    <line x1="410" y1="70" x2="410" y2="450" stroke="var(--rule)" stroke-width="1"/>
+    <line x1="700" y1="70" x2="700" y2="450" stroke="var(--rule)" stroke-width="1"/>
+
+    <rect x="404" y="120" width="12" height="140" fill="var(--paper-2)" stroke="var(--rule)" stroke-width="0.8"/>
+    <rect x="694" y="162" width="12" height="46" fill="var(--paper-2)" stroke="var(--rule)" stroke-width="0.8"/>
+
+    <g><rect x="50" y="30" width="120" height="40" rx="8" fill="var(--paper)" stroke="var(--rule-solid)" stroke-width="1.2"/><text x="110" y="55" text-anchor="middle" font-family="Inter,sans-serif" font-size="13" font-weight="600" fill="var(--ink)">Client</text></g>
+    <g><rect x="350" y="30" width="120" height="40" rx="8" fill="var(--paper)" stroke="var(--rule-solid)" stroke-width="1.2"/><text x="410" y="55" text-anchor="middle" font-family="Inter,sans-serif" font-size="13" font-weight="600" fill="var(--ink)">API</text></g>
+    <g><rect x="640" y="30" width="120" height="40" rx="8" fill="var(--paper)" stroke="var(--rule-solid)" stroke-width="1.2"/><text x="700" y="55" text-anchor="middle" font-family="Inter,sans-serif" font-size="13" font-weight="600" fill="var(--ink)">Store</text></g>
+
+    <!-- base messages (static frame) -->
+    <line x1="110" y1="120" x2="404" y2="120" stroke="var(--muted)" stroke-width="1.2" marker-end="url(#arrow)"/>
+    <line x1="416" y1="162" x2="694" y2="162" stroke="var(--link)" stroke-width="1.2" marker-end="url(#arrow-link)"/>
+    <line x1="694" y1="206" x2="416" y2="206" stroke="var(--muted)" stroke-width="1" stroke-dasharray="4,3" marker-end="url(#arrow)"/>
+
+    <!-- trails: message lit once it has played -->
+    <line x1="110" y1="120" x2="404" y2="120" stroke="var(--accent)" stroke-width="2.4" class="trail" data-step="1"/>
+    <line x1="416" y1="162" x2="694" y2="162" stroke="var(--accent)" stroke-width="2.4" class="trail" data-step="2"/>
+    <line x1="694" y1="206" x2="416" y2="206" stroke="var(--accent)" stroke-width="2.4" class="trail" data-step="3"/>
+    <line x1="404" y1="345" x2="116" y2="345" stroke="var(--accent)" stroke-width="2.4" class="trail" data-step="4"/>
+
+    <!-- comets: travel the active message -->
+    <line x1="110" y1="120" x2="404" y2="120" stroke="var(--accent)" stroke-width="3" stroke-linecap="round" pathLength="100" stroke-dasharray="9 91" class="pf" data-step="1"/>
+    <line x1="416" y1="162" x2="694" y2="162" stroke="var(--accent)" stroke-width="3" stroke-linecap="round" pathLength="100" stroke-dasharray="9 91" class="pf" data-step="2"/>
+    <line x1="694" y1="206" x2="416" y2="206" stroke="var(--accent)" stroke-width="3" stroke-linecap="round" pathLength="100" stroke-dasharray="9 91" class="pf" data-step="3"/>
+    <line x1="404" y1="345" x2="116" y2="345" stroke="var(--accent)" stroke-width="3" stroke-linecap="round" pathLength="100" stroke-dasharray="9 91" class="pf" data-step="4"/>
+
+    <rect x="205" y="104" width="98" height="14" rx="2" fill="var(--paper)"/><text x="254" y="114" text-anchor="middle" font-family="'JetBrains Mono',monospace" font-size="9" letter-spacing=".05em" fill="var(--muted)">POST /orders</text>
+    <rect x="505" y="146" width="94" height="14" rx="2" fill="var(--paper)"/><text x="552" y="156" text-anchor="middle" font-family="'JetBrains Mono',monospace" font-size="9" letter-spacing=".05em" fill="var(--muted)">INSERT order</text>
+    <rect x="515" y="190" width="74" height="14" rx="2" fill="var(--paper)"/><text x="552" y="200" text-anchor="middle" font-family="'JetBrains Mono',monospace" font-size="9" letter-spacing=".05em" fill="var(--muted)">order_id</text>
+
+    <rect x="70" y="285" width="680" height="140" rx="4" fill="none" stroke="var(--rule)" stroke-width="1"/>
+    <path d="M70,303 H118 L118,289 Q118,285 114,285 H74 Q70,285 70,289 Z" fill="var(--paper-2)" stroke="var(--rule)" stroke-width="0.8"/>
+    <text x="82" y="299" font-family="'JetBrains Mono',monospace" font-size="8" letter-spacing=".14em" fill="var(--soft)">ALT</text>
+    <text x="128" y="299" font-family="'JetBrains Mono',monospace" font-size="9" fill="var(--muted)">[ charge approved ]</text>
+
+    <line x1="404" y1="345" x2="116" y2="345" stroke="var(--accent)" stroke-width="1.6" stroke-dasharray="5,3" marker-end="url(#arrow-accent)"/>
+    <rect x="210" y="329" width="88" height="14" rx="2" fill="var(--paper)"/><text x="254" y="339" text-anchor="middle" font-family="'JetBrains Mono',monospace" font-size="9" letter-spacing=".05em" fill="var(--muted)">201 Created</text>
+
+    <line x1="70" y1="372" x2="750" y2="372" stroke="var(--rule)" stroke-width="0.8" stroke-dasharray="3,3"/>
+    <text x="128" y="385" font-family="'JetBrains Mono',monospace" font-size="9" fill="var(--muted)">[ declined ]</text>
+    <line x1="404" y1="407" x2="116" y2="407" stroke="var(--danger)" stroke-width="1.2" stroke-dasharray="5,3" marker-end="url(#arrow-danger)"/>
+    <rect x="190" y="391" width="128" height="14" rx="2" fill="var(--paper)"/><text x="254" y="401" text-anchor="middle" font-family="'JetBrains Mono',monospace" font-size="9" letter-spacing=".05em" fill="var(--muted)">402 Payment Required</text>
+  </svg>
+  <p class="caption">Use the controls to <em>Play</em> or step through the messages in time order — POST, INSERT, the returned id, then 201. The declined branch stays static. With JavaScript off or under <tt>prefers-reduced-motion</tt>, the controls are hidden and the plain trace remains.</p>
+</div>
+
+<script>
+/* Minimal, dependency-free playback controller. Failure-safe: reveals controls
+   (via .motion-ready) only after binding succeeds; any error leaves the complete
+   static diagram visible. Honours prefers-reduced-motion. */
+(function(){
+  try{
+    var stage = document.getElementById('stage');
+    if(!stage) return;
+    var reduce = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if(reduce){ stage.setAttribute('data-motion','reduced'); return; }
+
+    var pfs    = Array.prototype.slice.call(stage.querySelectorAll('.pf'));
+    var trails = Array.prototype.slice.call(stage.querySelectorAll('.trail'));
+    var steps  = pfs.reduce(function(m,e){ return Math.max(m, +e.dataset.step||0); }, 0);
+    if(!steps) return;
+
+    var label  = stage.querySelector('[data-step-label]');
+    var status = stage.querySelector('[data-status]');
+    var playBtn= stage.querySelector('[data-act="play"]');
+
+    var params = new URLSearchParams(location.search);
+    var cur = Math.min(Math.max(parseInt(params.get('step'),10)||0, 0), steps);
+    var playing = false, timer = null, DUR = 1500;
+
+    function render(){
+      pfs.forEach(function(e){ e.classList.toggle('active', (+e.dataset.step)===cur); });
+      trails.forEach(function(e){ e.classList.toggle('done', cur>0 && (+e.dataset.step)<=cur); });
+      if(label)  label.textContent = cur + ' / ' + steps;
+      if(playBtn) playBtn.textContent = playing ? '❚❚ Pause' : '▶ Play';
+      if(status) status.textContent = cur===0 ? 'Static frame' : ('Message ' + cur + ' of ' + steps);
+    }
+    function set(n){ cur = n>steps ? 0 : (n<0 ? steps : n); render(); }
+    function pause(){ playing=false; clearInterval(timer); render(); }
+    function play(){ playing=true; if(cur===0) cur=1; clearInterval(timer);
+                     timer=setInterval(function(){ cur = cur>=steps ? 1 : cur+1; render(); }, DUR); render(); }
+
+    stage.addEventListener('click', function(ev){
+      var b = ev.target.closest('[data-act]'); if(!b) return;
+      var a = b.dataset.act;
+      if(a==='play'){ playing ? pause() : play(); }
+      else { pause(); set(a==='next' ? cur+1 : cur-1); }
+    });
+
+    stage.classList.add('motion-ready');
+    render();
+    if(params.get('play')==='1') play();
+  }catch(e){ /* complete static diagram remains */ }
+})();
+</script>
+</body>
+</html>

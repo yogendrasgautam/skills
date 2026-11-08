@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Release history — timeline</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --paper:#fbfaf8; --paper-2:#f1efea; --ink:#23262d; --muted:#5a616e;
+    --soft:#8a919d; --rule:rgba(35,38,45,0.12); --rule-solid:#cfd2d6;
+    --accent:#0f766e; --accent-tint:rgba(15,118,110,0.10);
+    --link:#2563eb; --danger:#b4432f;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{
+      --paper:#1a1d23; --paper-2:#23272f; --ink:#eceef1; --muted:#aeb4bf;
+      --soft:#7b828e; --rule:rgba(236,238,241,0.12); --rule-solid:rgba(236,238,241,0.22);
+      --accent:#2dd4bf; --accent-tint:rgba(45,212,191,0.12);
+      --link:#6ea0f0; --danger:#e07a63;
+    }
+  }
+  body{margin:0;background:var(--paper);color:var(--ink);font-family:'Inter',system-ui,sans-serif;}
+  .wrap{max-width:1040px;margin:0 auto;padding:40px 24px;}
+  .eyebrow{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:8px;letter-spacing:.16em;text-transform:uppercase;color:var(--soft);}
+  h1{font-family:'Fraunces',Georgia,serif;font-weight:400;font-size:28px;margin:2px 0 18px;}
+  svg{width:100%;height:auto;display:block;}
+  .caption{color:var(--muted);font-size:13px;margin-top:16px;max-width:62ch;}
+  .t{font-family:Inter,sans-serif;font-weight:600;font-size:13px;fill:var(--ink);}
+  .d{font-family:'JetBrains Mono',monospace;font-size:9px;fill:var(--soft);}
+  .era{font-family:'JetBrains Mono',monospace;font-size:8px;letter-spacing:.16em;fill:var(--soft);}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="eyebrow">Timeline</div>
+  <h1>Release history</h1>
+  <svg viewBox="0 0 960 320" role="img" aria-label="Timeline of releases: Beta in Mar 2024, v1.0 GA in Jun 2024, v2.0 in Jan 2025, an incident in Apr 2025, and v2.1 in May 2025.">
+    <defs>
+      <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="var(--muted)"/></marker>
+    </defs>
+
+    <!-- axis -->
+    <line x1="80" y1="160" x2="892" y2="160" stroke="var(--rule-solid)" stroke-width="1.4" marker-end="url(#arrow)"/>
+    <!-- era divider -->
+    <line x1="430" y1="132" x2="430" y2="188" stroke="var(--rule)" stroke-width="1" stroke-dasharray="3,3"/>
+    <text x="418" y="178" text-anchor="end" class="era">2024</text>
+    <text x="442" y="178" class="era">2025</text>
+
+    <!-- stubs -->
+    <line x1="180" y1="160" x2="180" y2="184" stroke="var(--rule)" stroke-width="1"/>
+    <line x1="340" y1="160" x2="340" y2="136" stroke="var(--accent)" stroke-width="1.4"/>
+    <line x1="520" y1="160" x2="520" y2="184" stroke="var(--rule)" stroke-width="1"/>
+    <line x1="680" y1="160" x2="680" y2="136" stroke="var(--rule)" stroke-width="1"/>
+    <line x1="820" y1="160" x2="820" y2="184" stroke="var(--rule)" stroke-width="1"/>
+
+    <!-- event dots -->
+    <circle cx="180" cy="160" r="5" fill="var(--paper)" stroke="var(--muted)" stroke-width="1.6"/>
+    <circle cx="340" cy="160" r="6" fill="var(--accent)"/>
+    <circle cx="520" cy="160" r="5" fill="var(--paper)" stroke="var(--muted)" stroke-width="1.6"/>
+    <circle cx="680" cy="160" r="5" fill="var(--danger)"/>
+    <circle cx="820" cy="160" r="5" fill="var(--paper)" stroke="var(--muted)" stroke-width="1.6"/>
+
+    <!-- cards: Beta (below) -->
+    <rect x="116" y="184" width="128" height="40" rx="8" fill="var(--paper)" stroke="var(--rule-solid)" stroke-width="1.2"/>
+    <text x="180" y="204" text-anchor="middle" class="t">Beta launch</text>
+    <text x="180" y="217" text-anchor="middle" class="d">MAR 2024</text>
+    <!-- v1.0 GA (above, focal) -->
+    <rect x="276" y="96" width="128" height="40" rx="8" fill="var(--accent-tint)" stroke="var(--accent)" stroke-width="1.6"/>
+    <text x="340" y="116" text-anchor="middle" class="t">v1.0 GA</text>
+    <text x="340" y="129" text-anchor="middle" class="d">JUN 2024</text>
+    <!-- v2.0 (below) -->
+    <rect x="456" y="184" width="128" height="40" rx="8" fill="var(--paper)" stroke="var(--rule-solid)" stroke-width="1.2"/>
+    <text x="520" y="204" text-anchor="middle" class="t">v2.0</text>
+    <text x="520" y="217" text-anchor="middle" class="d">JAN 2025</text>
+    <!-- Incident (above) -->
+    <rect x="616" y="96" width="128" height="40" rx="8" fill="var(--paper)" stroke="var(--rule-solid)" stroke-width="1.2"/>
+    <text x="680" y="116" text-anchor="middle" class="t" fill="var(--danger)">Incident</text>
+    <text x="680" y="129" text-anchor="middle" class="d">APR 2025</text>
+    <!-- v2.1 (below) -->
+    <rect x="756" y="184" width="128" height="40" rx="8" fill="var(--paper)" stroke="var(--rule-solid)" stroke-width="1.2"/>
+    <text x="820" y="204" text-anchor="middle" class="t">v2.1</text>
+    <text x="820" y="217" text-anchor="middle" class="d">MAY 2025</text>
+  </svg>
+  <p class="caption">Positions are roughly to scale, so the quiet stretch after v1.0 and the cluster around the 2025 releases are both visible at a glance.</p>
+</div>
+</body>
+</html>

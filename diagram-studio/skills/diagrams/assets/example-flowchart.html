@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Checkout payment — flowchart</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --paper:#fbfaf8; --paper-2:#f1efea; --ink:#23262d; --muted:#5a616e;
+    --soft:#8a919d; --rule:rgba(35,38,45,0.12); --rule-solid:#cfd2d6;
+    --accent:#0f766e; --accent-tint:rgba(15,118,110,0.10);
+    --link:#2563eb; --danger:#b4432f;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{
+      --paper:#1a1d23; --paper-2:#23272f; --ink:#eceef1; --muted:#aeb4bf;
+      --soft:#7b828e; --rule:rgba(236,238,241,0.12); --rule-solid:rgba(236,238,241,0.22);
+      --accent:#2dd4bf; --accent-tint:rgba(45,212,191,0.12);
+      --link:#6ea0f0; --danger:#e07a63;
+    }
+  }
+  body{margin:0;background:var(--paper);color:var(--ink);font-family:'Inter',system-ui,sans-serif;}
+  .wrap{max-width:720px;margin:0 auto;padding:40px 24px;}
+  .eyebrow{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:8px;letter-spacing:.16em;text-transform:uppercase;color:var(--soft);}
+  h1{font-family:'Fraunces',Georgia,serif;font-weight:400;font-size:28px;margin:2px 0 18px;}
+  svg{width:100%;height:auto;display:block;}
+  .caption{color:var(--muted);font-size:13px;margin-top:16px;max-width:62ch;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="eyebrow">Flowchart</div>
+  <h1>Checkout payment</h1>
+  <svg viewBox="0 0 640 640" role="img" aria-label="Checkout flowchart: start, validate input (no rejects), process payment, check charge (no retries back to process), yes confirms.">
+    <defs>
+      <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="var(--muted)"/></marker>
+      <marker id="arrow-accent" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="var(--accent)"/></marker>
+    </defs>
+
+    <!-- connectors -->
+    <path d="M320,90 V126" fill="none" stroke="var(--muted)" stroke-width="1.2" marker-end="url(#arrow)"/>
+    <!-- Valid? No -> Reject -->
+    <path d="M250,170 H195" fill="none" stroke="var(--muted)" stroke-width="1.2" marker-end="url(#arrow)"/>
+    <rect x="205" y="152" width="26" height="14" rx="2" fill="var(--paper)"/>
+    <text x="218" y="162" text-anchor="middle" font-family="'JetBrains Mono',monospace" font-size="9" fill="var(--muted)">No</text>
+    <!-- Valid? Yes -> Process -->
+    <path d="M320,214 V274" fill="none" stroke="var(--muted)" stroke-width="1.2" marker-end="url(#arrow)"/>
+    <rect x="326" y="237" width="30" height="14" rx="2" fill="var(--paper)"/>
+    <text x="341" y="247" text-anchor="middle" font-family="'JetBrains Mono',monospace" font-size="9" fill="var(--muted)">Yes</text>
+    <!-- Process -> Charge? -->
+    <path d="M320,326 V376" fill="none" stroke="var(--muted)" stroke-width="1.2" marker-end="url(#arrow)"/>
+    <!-- Charge? No -> Retry -->
+    <path d="M390,420 H460" fill="none" stroke="var(--muted)" stroke-width="1.2" marker-end="url(#arrow)"/>
+    <rect x="412" y="402" width="26" height="14" rx="2" fill="var(--paper)"/>
+    <text x="425" y="412" text-anchor="middle" font-family="'JetBrains Mono',monospace" font-size="9" fill="var(--muted)">No</text>
+    <!-- Retry -> back to Process (loop-back, dashed) -->
+    <path d="M520,396 V308 Q520,300 512,300 H400" fill="none" stroke="var(--muted)" stroke-width="1" stroke-dasharray="4,3" marker-end="url(#arrow)"/>
+    <rect x="470" y="293" width="40" height="14" rx="2" fill="var(--paper)"/>
+    <text x="490" y="303" text-anchor="middle" font-family="'JetBrains Mono',monospace" font-size="9" fill="var(--muted)">retry</text>
+    <!-- Charge? Yes -> Confirm (focal) -->
+    <path d="M320,464 V540" fill="none" stroke="var(--accent)" stroke-width="1.6" marker-end="url(#arrow-accent)"/>
+    <rect x="326" y="494" width="30" height="14" rx="2" fill="var(--paper)"/>
+    <text x="341" y="504" text-anchor="middle" font-family="'JetBrains Mono',monospace" font-size="9" fill="var(--muted)">Yes</text>
+
+    <!-- nodes -->
+    <!-- Start -->
+    <rect x="260" y="50" width="120" height="40" rx="20" fill="var(--paper)" stroke="var(--rule-solid)" stroke-width="1.2"/>
+    <text x="320" y="74" text-anchor="middle" font-family="Inter,sans-serif" font-size="13" font-weight="600" fill="var(--ink)">Start</text>
+    <!-- Valid? diamond -->
+    <polygon points="320,126 390,170 320,214 250,170" fill="var(--paper)" stroke="var(--rule-solid)" stroke-width="1.2"/>
+    <text x="320" y="174" text-anchor="middle" font-family="Inter,sans-serif" font-size="12" font-weight="600" fill="var(--ink)">Valid input?</text>
+    <!-- Reject -->
+    <rect x="85" y="150" width="110" height="40" rx="20" fill="var(--paper)" stroke="var(--rule-solid)" stroke-width="1.2"/>
+    <text x="140" y="174" text-anchor="middle" font-family="Inter,sans-serif" font-size="13" font-weight="600" fill="var(--muted)">Reject</text>
+    <!-- Process -->
+    <rect x="240" y="274" width="160" height="52" rx="8" fill="var(--paper)" stroke="var(--rule-solid)" stroke-width="1.2"/>
+    <text x="320" y="304" text-anchor="middle" font-family="Inter,sans-serif" font-size="13" font-weight="600" fill="var(--ink)">Process payment</text>
+    <!-- Charge? diamond -->
+    <polygon points="320,376 390,420 320,464 250,420" fill="var(--paper)" stroke="var(--rule-solid)" stroke-width="1.2"/>
+    <text x="320" y="424" text-anchor="middle" font-family="Inter,sans-serif" font-size="12" font-weight="600" fill="var(--ink)">Charge ok?</text>
+    <!-- Retry -->
+    <rect x="460" y="396" width="120" height="48" rx="8" fill="var(--paper)" stroke="var(--rule-solid)" stroke-width="1.2"/>
+    <text x="520" y="424" text-anchor="middle" font-family="Inter,sans-serif" font-size="13" font-weight="600" fill="var(--ink)">Retry</text>
+    <!-- Confirm (focal) -->
+    <rect x="255" y="540" width="130" height="40" rx="20" fill="var(--accent-tint)" stroke="var(--accent)" stroke-width="1.6"/>
+    <text x="320" y="564" text-anchor="middle" font-family="Inter,sans-serif" font-size="13" font-weight="600" fill="var(--ink)">Confirm</text>
+  </svg>
+  <p class="caption">The success path runs straight down the spine; the only exceptions — invalid input and a failed charge — branch sideways and either terminate or loop back.</p>
+</div>
+</body>
+</html>

@@ -1,0 +1,198 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Payments service — architecture</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --paper:#fbfaf8; --paper-2:#f1efea; --ink:#23262d; --muted:#5a616e;
+    --soft:#8a919d; --rule:rgba(35,38,45,0.12); --rule-solid:#cfd2d6;
+    --accent:#0f766e; --accent-tint:rgba(15,118,110,0.10);
+    --link:#2563eb; --danger:#b4432f;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{
+      --paper:#1a1d23; --paper-2:#23272f; --ink:#eceef1; --muted:#aeb4bf;
+      --soft:#7b828e; --rule:rgba(236,238,241,0.12); --rule-solid:rgba(236,238,241,0.22);
+      --accent:#2dd4bf; --accent-tint:rgba(45,212,191,0.12);
+      --link:#6ea0f0; --danger:#e07a63;
+    }
+  }
+  body{margin:0;background:var(--paper);color:var(--ink);font-family:'Inter',system-ui,sans-serif;}
+  .wrap{max-width:1040px;margin:0 auto;padding:40px 24px;}
+  .head{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-bottom:18px;}
+  .eyebrow{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:8px;letter-spacing:.16em;text-transform:uppercase;color:var(--soft);}
+  h1{font-family:'Fraunces',Georgia,serif;font-weight:400;font-size:28px;margin:2px 0 0;}
+  svg{width:100%;height:auto;display:block;}
+  .caption{color:var(--muted);font-size:13px;margin-top:16px;max-width:62ch;}
+
+  /* playback controls — hidden until the controller binds successfully */
+  .controls{display:none;align-items:center;gap:6px;}
+  .motion-ready .controls{display:inline-flex;}
+  .controls button{font-family:'JetBrains Mono',monospace;font-size:12px;line-height:1;cursor:pointer;
+    border:1px solid var(--rule-solid);background:var(--paper);color:var(--ink);border-radius:8px;padding:6px 9px;}
+  .controls button:hover{border-color:var(--accent);color:var(--accent);}
+  .controls .play{min-width:74px;}
+  .controls .step{font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--soft);min-width:34px;text-align:center;}
+  .sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;}
+
+  /* trail = accent highlight of a traversed hop; pf = travelling comet on the active hop */
+  .trail{display:none;}
+  .pf{display:none;}
+  .motion-ready .trail.done{display:inline;}
+  @media (prefers-reduced-motion: no-preference){
+    .motion-ready .pf.active{display:inline;stroke-dashoffset:100;animation:flow 1.5s linear infinite;}
+    .motion-ready .ants.playing{animation:ants 1s linear infinite;}
+    @keyframes flow{to{stroke-dashoffset:0;}}
+    @keyframes ants{to{stroke-dashoffset:-14;}}
+  }
+</style>
+</head>
+<body>
+<div class="wrap" id="stage" data-motion="static">
+  <div class="head">
+    <div>
+      <div class="eyebrow">Architecture</div>
+      <h1>Payments service</h1>
+    </div>
+    <div class="controls" role="group" aria-label="Flow playback">
+      <button type="button" data-act="prev" aria-label="Previous step">◀</button>
+      <button type="button" data-act="play" class="play" aria-label="Play flow">▶ Play</button>
+      <button type="button" data-act="next" aria-label="Next step">▶</button>
+      <span class="step" data-step-label aria-hidden="true">0 / 3</span>
+      <span class="sr" aria-live="polite" data-status>Static frame</span>
+    </div>
+  </div>
+  <svg viewBox="0 0 960 600" role="img" aria-label="Payments service architecture: a client reaches an API gateway, which publishes events to a queue and routes the request to the order service; the order service writes to Postgres. Playback steps a pulse along the request path.">
+    <defs>
+      <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="var(--muted)"/></marker>
+      <marker id="arrow-accent" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="var(--accent)"/></marker>
+      <marker id="arrow-link" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="var(--link)"/></marker>
+    </defs>
+
+    <!-- zones -->
+    <g>
+      <rect x="48" y="150" width="200" height="300" rx="10" fill="var(--paper-2)" stroke="var(--rule)" stroke-width="0.8"/>
+      <rect x="60" y="154" width="44" height="14" rx="2" fill="var(--paper)"/>
+      <text x="64" y="164" font-family="'JetBrains Mono',monospace" font-size="8" letter-spacing=".16em" fill="var(--soft)">EDGE</text>
+      <rect x="300" y="150" width="240" height="300" rx="10" fill="var(--paper-2)" stroke="var(--rule)" stroke-width="0.8"/>
+      <rect x="312" y="154" width="44" height="14" rx="2" fill="var(--paper)"/>
+      <text x="316" y="164" font-family="'JetBrains Mono',monospace" font-size="8" letter-spacing=".16em" fill="var(--soft)">CORE</text>
+      <rect x="672" y="150" width="240" height="300" rx="10" fill="var(--paper-2)" stroke="var(--rule)" stroke-width="0.8"/>
+      <rect x="684" y="154" width="44" height="14" rx="2" fill="var(--paper)"/>
+      <text x="688" y="164" font-family="'JetBrains Mono',monospace" font-size="8" letter-spacing=".16em" fill="var(--soft)">DATA</text>
+    </g>
+
+    <!-- base connectors (solid = complete static frame) -->
+    <path d="M216,300 H270 Q278,300 278,292 V208 Q278,200 286,200 H340" fill="none" stroke="var(--link)" stroke-width="1.2" marker-end="url(#arrow-link)"/>
+    <path d="M420,228 V352" fill="none" stroke="var(--accent)" stroke-width="1.6" marker-end="url(#arrow-accent)"/>
+    <path d="M500,380 H725" fill="none" stroke="var(--link)" stroke-width="1.2" marker-end="url(#arrow-link)"/>
+    <path d="M500,200 H725" fill="none" stroke="var(--muted)" stroke-width="1" stroke-dasharray="4,3" marker-end="url(#arrow)" data-ants="" class="ants"/>
+
+    <!-- trails: accent highlight shown once a hop has been traversed -->
+    <path d="M216,300 H270 Q278,300 278,292 V208 Q278,200 286,200 H340" fill="none" stroke="var(--accent)" stroke-width="2.2" class="trail" data-step="1"/>
+    <path d="M420,228 V352" fill="none" stroke="var(--accent)" stroke-width="2.6" class="trail" data-step="2"/>
+    <path d="M500,380 H725" fill="none" stroke="var(--accent)" stroke-width="2.2" class="trail" data-step="3"/>
+
+    <!-- comets: travel the active hop -->
+    <path d="M216,300 H270 Q278,300 278,292 V208 Q278,200 286,200 H340" fill="none" stroke="var(--accent)" stroke-width="3" stroke-linecap="round" pathLength="100" stroke-dasharray="9 91" class="pf" data-step="1"/>
+    <path d="M420,228 V352" fill="none" stroke="var(--accent)" stroke-width="3" stroke-linecap="round" pathLength="100" stroke-dasharray="9 91" class="pf" data-step="2"/>
+    <path d="M500,380 H725" fill="none" stroke="var(--accent)" stroke-width="3" stroke-linecap="round" pathLength="100" stroke-dasharray="9 91" class="pf" data-step="3"/>
+
+    <!-- edge labels -->
+    <rect x="251" y="243" width="54" height="14" rx="2" fill="var(--paper)"/>
+    <text x="278" y="253" text-anchor="middle" font-family="'JetBrains Mono',monospace" font-size="9" letter-spacing=".05em" fill="var(--muted)">HTTPS</text>
+    <rect x="394" y="283" width="52" height="14" rx="2" fill="var(--paper)"/>
+    <text x="420" y="293" text-anchor="middle" font-family="'JetBrains Mono',monospace" font-size="9" letter-spacing=".05em" fill="var(--muted)">route</text>
+    <rect x="585" y="193" width="56" height="14" rx="2" fill="var(--paper)"/>
+    <text x="613" y="203" text-anchor="middle" font-family="'JetBrains Mono',monospace" font-size="9" letter-spacing=".05em" fill="var(--muted)">events</text>
+    <rect x="596" y="373" width="34" height="14" rx="2" fill="var(--paper)"/>
+    <text x="613" y="383" text-anchor="middle" font-family="'JetBrains Mono',monospace" font-size="9" letter-spacing=".05em" fill="var(--muted)">SQL</text>
+
+    <!-- nodes -->
+    <g>
+      <rect x="76" y="272" width="140" height="56" rx="8" fill="var(--paper)" stroke="var(--rule-solid)" stroke-width="1.2"/>
+      <text x="146" y="296" text-anchor="middle" font-family="Inter,sans-serif" font-size="13" font-weight="600" fill="var(--ink)">Client</text>
+      <text x="146" y="312" text-anchor="middle" font-family="'JetBrains Mono',monospace" font-size="10" fill="var(--soft)">web · mobile</text>
+    </g>
+    <g>
+      <rect x="340" y="172" width="160" height="56" rx="8" fill="var(--paper)" stroke="var(--rule-solid)" stroke-width="1.2"/>
+      <text x="420" y="196" text-anchor="middle" font-family="Inter,sans-serif" font-size="13" font-weight="600" fill="var(--ink)">API Gateway</text>
+      <text x="420" y="212" text-anchor="middle" font-family="'JetBrains Mono',monospace" font-size="10" fill="var(--soft)">:443 · REST</text>
+    </g>
+    <g>
+      <rect x="340" y="352" width="160" height="56" rx="8" fill="var(--accent-tint)" stroke="var(--accent)" stroke-width="1.6"/>
+      <text x="420" y="376" text-anchor="middle" font-family="Inter,sans-serif" font-size="13" font-weight="600" fill="var(--ink)">Order Service</text>
+      <text x="420" y="392" text-anchor="middle" font-family="'JetBrains Mono',monospace" font-size="10" fill="var(--soft)">gRPC · idempotent</text>
+    </g>
+    <g>
+      <rect x="725" y="172" width="150" height="56" rx="8" fill="var(--paper)" stroke="var(--rule-solid)" stroke-width="1.2"/>
+      <text x="800" y="196" text-anchor="middle" font-family="Inter,sans-serif" font-size="13" font-weight="600" fill="var(--ink)">Event Queue</text>
+      <text x="800" y="212" text-anchor="middle" font-family="'JetBrains Mono',monospace" font-size="10" fill="var(--soft)">at-least-once</text>
+    </g>
+    <g>
+      <rect x="725" y="352" width="150" height="56" rx="8" fill="var(--paper)" stroke="var(--rule-solid)" stroke-width="1.2"/>
+      <text x="800" y="376" text-anchor="middle" font-family="Inter,sans-serif" font-size="13" font-weight="600" fill="var(--ink)">Postgres</text>
+      <text x="800" y="392" text-anchor="middle" font-family="'JetBrains Mono',monospace" font-size="10" fill="var(--soft)">orders · v15</text>
+    </g>
+  </svg>
+  <p class="caption">Use the controls to <em>Play</em> or step a pulse along the request path: Client → Gateway → Order Service → Postgres. With JavaScript off or under <tt>prefers-reduced-motion</tt>, the controls are hidden and the solid edges tell the whole story.</p>
+</div>
+
+<script>
+/* Minimal, dependency-free playback controller. Failure-safe: it only reveals
+   the controls (via .motion-ready) after binding succeeds, so any error leaves
+   the complete static diagram visible. Honours prefers-reduced-motion. */
+(function(){
+  try{
+    var stage = document.getElementById('stage');
+    if(!stage) return;
+    var reduce = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if(reduce){ stage.setAttribute('data-motion','reduced'); return; }   /* static, no controls */
+
+    var pfs    = Array.prototype.slice.call(stage.querySelectorAll('.pf'));
+    var trails = Array.prototype.slice.call(stage.querySelectorAll('.trail'));
+    var ants   = Array.prototype.slice.call(stage.querySelectorAll('[data-ants]'));
+    var steps  = pfs.reduce(function(m,e){ return Math.max(m, +e.dataset.step||0); }, 0);
+    if(!steps) return;
+
+    var label  = stage.querySelector('[data-step-label]');
+    var status = stage.querySelector('[data-status]');
+    var playBtn= stage.querySelector('[data-act="play"]');
+
+    var params = new URLSearchParams(location.search);   /* ?step=N / ?play=1 for deep-links & export */
+    var cur = Math.min(Math.max(parseInt(params.get('step'),10)||0, 0), steps);
+    var playing = false, timer = null, DUR = 1600;
+
+    function render(){
+      pfs.forEach(function(e){ e.classList.toggle('active', (+e.dataset.step)===cur); });
+      trails.forEach(function(e){ e.classList.toggle('done', cur>0 && (+e.dataset.step)<=cur); });
+      ants.forEach(function(e){ e.classList.toggle('playing', playing); });
+      if(label)  label.textContent = cur + ' / ' + steps;
+      if(playBtn) playBtn.textContent = playing ? '❚❚ Pause' : '▶ Play';
+      if(status) status.textContent = cur===0 ? 'Static frame' : ('Step ' + cur + ' of ' + steps);
+    }
+    function set(n){ cur = n>steps ? 0 : (n<0 ? steps : n); render(); }
+    function pause(){ playing=false; clearInterval(timer); render(); }
+    function play(){ playing=true; if(cur===0) cur=1; clearInterval(timer);
+                     timer=setInterval(function(){ cur = cur>=steps ? 1 : cur+1; render(); }, DUR); render(); }
+
+    stage.addEventListener('click', function(ev){
+      var b = ev.target.closest('[data-act]'); if(!b) return;
+      var a = b.dataset.act;
+      if(a==='play'){ playing ? pause() : play(); }
+      else { pause(); set(a==='next' ? cur+1 : cur-1); }
+    });
+
+    stage.classList.add('motion-ready');
+    render();
+    if(params.get('play')==='1') play();
+  }catch(e){ /* complete static diagram remains */ }
+})();
+</script>
+</body>
+</html>

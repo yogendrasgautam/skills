@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Commerce DB — schema</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --paper:#fbfaf8; --paper-2:#f1efea; --ink:#23262d; --muted:#5a616e;
+    --soft:#8a919d; --rule:rgba(35,38,45,0.12); --rule-solid:#cfd2d6;
+    --accent:#0f766e; --accent-tint:rgba(15,118,110,0.10);
+    --link:#2563eb; --danger:#b4432f;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{
+      --paper:#1a1d23; --paper-2:#23272f; --ink:#eceef1; --muted:#aeb4bf;
+      --soft:#7b828e; --rule:rgba(236,238,241,0.12); --rule-solid:rgba(236,238,241,0.22);
+      --accent:#2dd4bf; --accent-tint:rgba(45,212,191,0.12);
+      --link:#6ea0f0; --danger:#e07a63;
+    }
+  }
+  body{margin:0;background:var(--paper);color:var(--ink);font-family:'Inter',system-ui,sans-serif;}
+  .wrap{max-width:1000px;margin:0 auto;padding:40px 24px;}
+  .eyebrow{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:8px;letter-spacing:.16em;text-transform:uppercase;color:var(--soft);}
+  h1{font-family:'Fraunces',Georgia,serif;font-weight:400;font-size:28px;margin:2px 0 18px;}
+  svg{width:100%;height:auto;display:block;}
+  .caption{color:var(--muted);font-size:13px;margin-top:16px;max-width:62ch;}
+  .tn{font-family:'JetBrains Mono',monospace;font-weight:500;font-size:12px;fill:var(--ink);}
+  .cn{font-family:'JetBrains Mono',monospace;font-size:10px;fill:var(--ink);}
+  .ct{font-family:'JetBrains Mono',monospace;font-size:10px;fill:var(--soft);}
+  .ck{font-family:'JetBrains Mono',monospace;font-size:7px;letter-spacing:.06em;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="eyebrow">Database schema</div>
+  <h1>Commerce DB</h1>
+  <svg viewBox="0 0 920 420" role="img" aria-label="Database schema: orders references customers; line_items references orders and products. Keys and column types shown per table.">
+    <!-- joins: FK -> PK, anchored on rows (drawn first) -->
+    <!-- orders.customer_id -> customers.id -->
+    <path d="M360,136 H318 Q310,136 310,128 V124 Q310,116 302,116 H276" fill="none" stroke="var(--muted)" stroke-width="1.2"/>
+    <path d="M344,136 L360,128 M344,136 L360,144 M344,136 L360,136" fill="none" stroke="var(--muted)" stroke-width="1.2"/>
+    <line x1="270" y1="108" x2="270" y2="124" stroke="var(--muted)" stroke-width="1.2"/>
+    <!-- line_items.order_id -> orders.id -->
+    <path d="M660,136 H618 Q610,136 610,128 V124 Q610,116 602,116 H576" fill="none" stroke="var(--muted)" stroke-width="1.2"/>
+    <path d="M644,136 L660,128 M644,136 L660,144 M644,136 L660,136" fill="none" stroke="var(--muted)" stroke-width="1.2"/>
+    <line x1="570" y1="108" x2="570" y2="124" stroke="var(--muted)" stroke-width="1.2"/>
+    <!-- line_items.product_id -> products.id (right gutter) -->
+    <path d="M860,156 H876 Q880,156 880,160 V302 Q880,306 876,306 H860" fill="none" stroke="var(--muted)" stroke-width="1.2"/>
+    <path d="M860,156 L848,148 M860,156 L848,164 M860,156 L848,156" fill="none" stroke="var(--muted)" stroke-width="1.2"/>
+    <line x1="852" y1="298" x2="868" y2="298" stroke="var(--muted)" stroke-width="1.2"/>
+
+    <!-- ===== customers ===== -->
+    <rect x="60" y="80" width="200" height="86" rx="8" fill="var(--paper)" stroke="var(--rule-solid)" stroke-width="1.2"/>
+    <path d="M60,88 a8,8 0 0 1 8,-8 H252 a8,8 0 0 1 8,8 V106 H60 Z" fill="var(--paper-2)"/>
+    <text x="72" y="100" class="tn">customers</text>
+    <rect x="68" y="110" width="20" height="12" rx="2" fill="var(--accent-tint)"/><text x="71" y="119" class="ck" fill="var(--accent)">PK</text>
+    <text x="96" y="120" class="cn">id</text><text x="250" y="120" text-anchor="end" class="ct">uuid</text>
+    <text x="96" y="140" class="cn">email</text><text x="250" y="140" text-anchor="end" class="ct">varchar</text>
+    <text x="96" y="160" class="cn">name</text><text x="250" y="160" text-anchor="end" class="ct">varchar</text>
+
+    <!-- ===== orders (focal / fact) ===== -->
+    <rect x="360" y="80" width="200" height="106" rx="8" fill="var(--accent-tint)" stroke="var(--accent)" stroke-width="1.6"/>
+    <path d="M360,88 a8,8 0 0 1 8,-8 H552 a8,8 0 0 1 8,8 V106 H360 Z" fill="rgba(15,118,110,0.14)"/>
+    <text x="372" y="100" class="tn">orders</text>
+    <rect x="368" y="110" width="20" height="12" rx="2" fill="var(--paper)"/><text x="371" y="119" class="ck" fill="var(--accent)">PK</text>
+    <text x="396" y="120" class="cn">id</text><text x="550" y="120" text-anchor="end" class="ct">uuid</text>
+    <rect x="368" y="130" width="20" height="12" rx="2" fill="var(--paper)"/><text x="371" y="139" class="ck" fill="var(--muted)">FK</text>
+    <text x="396" y="140" class="cn">customer_id</text><text x="550" y="140" text-anchor="end" class="ct">uuid</text>
+    <text x="396" y="160" class="cn">total</text><text x="550" y="160" text-anchor="end" class="ct">numeric</text>
+    <text x="396" y="180" class="cn">created_at</text><text x="550" y="180" text-anchor="end" class="ct">timestamptz</text>
+
+    <!-- ===== line_items ===== -->
+    <rect x="660" y="80" width="200" height="106" rx="8" fill="var(--paper)" stroke="var(--rule-solid)" stroke-width="1.2"/>
+    <path d="M660,88 a8,8 0 0 1 8,-8 H852 a8,8 0 0 1 8,8 V106 H660 Z" fill="var(--paper-2)"/>
+    <text x="672" y="100" class="tn">line_items</text>
+    <rect x="668" y="110" width="20" height="12" rx="2" fill="var(--accent-tint)"/><text x="671" y="119" class="ck" fill="var(--accent)">PK</text>
+    <text x="696" y="120" class="cn">id</text><text x="850" y="120" text-anchor="end" class="ct">uuid</text>
+    <rect x="668" y="130" width="20" height="12" rx="2" fill="var(--paper)"/><text x="671" y="139" class="ck" fill="var(--muted)">FK</text>
+    <text x="696" y="140" class="cn">order_id</text><text x="850" y="140" text-anchor="end" class="ct">uuid</text>
+    <rect x="668" y="150" width="20" height="12" rx="2" fill="var(--paper)"/><text x="671" y="159" class="ck" fill="var(--muted)">FK</text>
+    <text x="696" y="160" class="cn">product_id</text><text x="850" y="160" text-anchor="end" class="ct">uuid</text>
+    <text x="696" y="180" class="cn">quantity</text><text x="850" y="180" text-anchor="end" class="ct">int</text>
+
+    <!-- ===== products ===== -->
+    <rect x="660" y="270" width="200" height="86" rx="8" fill="var(--paper)" stroke="var(--rule-solid)" stroke-width="1.2"/>
+    <path d="M660,278 a8,8 0 0 1 8,-8 H852 a8,8 0 0 1 8,8 V296 H660 Z" fill="var(--paper-2)"/>
+    <text x="672" y="290" class="tn">products</text>
+    <rect x="668" y="300" width="20" height="12" rx="2" fill="var(--accent-tint)"/><text x="671" y="309" class="ck" fill="var(--accent)">PK</text>
+    <text x="696" y="310" class="cn">id</text><text x="850" y="310" text-anchor="end" class="ct">uuid</text>
+    <text x="696" y="330" class="cn">name</text><text x="850" y="330" text-anchor="end" class="ct">varchar</text>
+    <text x="696" y="350" class="cn">price</text><text x="850" y="350" text-anchor="end" class="ct">numeric</text>
+  </svg>
+  <p class="caption">Each join springs from the exact FK row and lands on the referenced PK row, so it is unambiguous which columns bind. Orders is the fact table the others hang off.</p>
+</div>
+</body>
+</html>

@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Order lifecycle — state machine</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --paper:#fbfaf8; --paper-2:#f1efea; --ink:#23262d; --muted:#5a616e;
+    --soft:#8a919d; --rule:rgba(35,38,45,0.12); --rule-solid:#cfd2d6;
+    --accent:#0f766e; --accent-tint:rgba(15,118,110,0.10);
+    --link:#2563eb; --danger:#b4432f;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{
+      --paper:#1a1d23; --paper-2:#23272f; --ink:#eceef1; --muted:#aeb4bf;
+      --soft:#7b828e; --rule:rgba(236,238,241,0.12); --rule-solid:rgba(236,238,241,0.22);
+      --accent:#2dd4bf; --accent-tint:rgba(45,212,191,0.12);
+      --link:#6ea0f0; --danger:#e07a63;
+    }
+  }
+  body{margin:0;background:var(--paper);color:var(--ink);font-family:'Inter',system-ui,sans-serif;}
+  .wrap{max-width:1040px;margin:0 auto;padding:40px 24px;}
+  .eyebrow{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:8px;letter-spacing:.16em;text-transform:uppercase;color:var(--soft);}
+  h1{font-family:'Fraunces',Georgia,serif;font-weight:400;font-size:28px;margin:2px 0 18px;}
+  svg{width:100%;height:auto;display:block;}
+  .caption{color:var(--muted);font-size:13px;margin-top:16px;max-width:62ch;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="eyebrow">State machine</div>
+  <h1>Order lifecycle</h1>
+  <svg viewBox="0 0 960 340" role="img" aria-label="State machine: pending becomes paid then shipped then delivered; pending can be cancelled. Delivered and cancelled are terminal.">
+    <defs>
+      <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="var(--muted)"/></marker>
+      <marker id="arrow-accent" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="var(--accent)"/></marker>
+      <marker id="arrow-danger" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="var(--danger)"/></marker>
+    </defs>
+
+    <!-- transitions -->
+    <line x1="60" y1="120" x2="100" y2="120" stroke="var(--muted)" stroke-width="1.2" marker-end="url(#arrow)"/>
+    <line x1="220" y1="120" x2="300" y2="120" stroke="var(--muted)" stroke-width="1.2" marker-end="url(#arrow)"/>
+    <rect x="232" y="100" width="56" height="14" rx="2" fill="var(--paper)"/>
+    <text x="260" y="110" text-anchor="middle" font-family="'JetBrains Mono',monospace" font-size="9" fill="var(--muted)">pay [ok]</text>
+
+    <line x1="420" y1="120" x2="500" y2="120" stroke="var(--muted)" stroke-width="1.2" marker-end="url(#arrow)"/>
+    <rect x="432" y="100" width="56" height="14" rx="2" fill="var(--paper)"/>
+    <text x="460" y="110" text-anchor="middle" font-family="'JetBrains Mono',monospace" font-size="9" fill="var(--muted)">dispatch</text>
+
+    <line x1="620" y1="120" x2="700" y2="120" stroke="var(--accent)" stroke-width="1.6" marker-end="url(#arrow-accent)"/>
+    <rect x="632" y="100" width="56" height="14" rx="2" fill="var(--paper)"/>
+    <text x="660" y="110" text-anchor="middle" font-family="'JetBrains Mono',monospace" font-size="9" fill="var(--muted)">confirm</text>
+
+    <line x1="820" y1="120" x2="862" y2="120" stroke="var(--muted)" stroke-width="1.2" marker-end="url(#arrow)"/>
+
+    <!-- Pending -> Cancelled -->
+    <path d="M160,146 V252 Q160,260 168,260 H300" fill="none" stroke="var(--danger)" stroke-width="1.2" marker-end="url(#arrow-danger)"/>
+    <rect x="168" y="200" width="52" height="14" rx="2" fill="var(--paper)"/>
+    <text x="194" y="210" text-anchor="middle" font-family="'JetBrains Mono',monospace" font-size="9" fill="var(--muted)">cancel</text>
+    <!-- Cancelled -> terminal -->
+    <line x1="420" y1="260" x2="462" y2="260" stroke="var(--muted)" stroke-width="1.2" marker-end="url(#arrow)"/>
+
+    <!-- initial / terminal markers -->
+    <circle cx="54" cy="120" r="6" fill="var(--ink)"/>
+    <circle cx="870" cy="120" r="8" fill="none" stroke="var(--ink)" stroke-width="1.4"/>
+    <circle cx="870" cy="120" r="3.5" fill="var(--ink)"/>
+    <circle cx="470" cy="260" r="8" fill="none" stroke="var(--ink)" stroke-width="1.4"/>
+    <circle cx="470" cy="260" r="3.5" fill="var(--ink)"/>
+
+    <!-- states -->
+    <g>
+      <rect x="100" y="94" width="120" height="52" rx="8" fill="var(--paper)" stroke="var(--rule-solid)" stroke-width="1.2"/>
+      <text x="160" y="124" text-anchor="middle" font-family="Inter,sans-serif" font-size="13" font-weight="600" fill="var(--ink)">Pending</text>
+    </g>
+    <g>
+      <rect x="300" y="94" width="120" height="52" rx="8" fill="var(--paper)" stroke="var(--rule-solid)" stroke-width="1.2"/>
+      <text x="360" y="124" text-anchor="middle" font-family="Inter,sans-serif" font-size="13" font-weight="600" fill="var(--ink)">Paid</text>
+    </g>
+    <g>
+      <rect x="500" y="94" width="120" height="52" rx="8" fill="var(--paper)" stroke="var(--rule-solid)" stroke-width="1.2"/>
+      <text x="560" y="124" text-anchor="middle" font-family="Inter,sans-serif" font-size="13" font-weight="600" fill="var(--ink)">Shipped</text>
+    </g>
+    <g>
+      <rect x="700" y="94" width="120" height="52" rx="8" fill="var(--accent-tint)" stroke="var(--accent)" stroke-width="1.6"/>
+      <text x="760" y="124" text-anchor="middle" font-family="Inter,sans-serif" font-size="13" font-weight="600" fill="var(--ink)">Delivered</text>
+    </g>
+    <g>
+      <rect x="300" y="234" width="120" height="52" rx="8" fill="var(--paper)" stroke="var(--rule-solid)" stroke-width="1.2"/>
+      <text x="360" y="264" text-anchor="middle" font-family="Inter,sans-serif" font-size="13" font-weight="600" fill="var(--muted)">Cancelled</text>
+    </g>
+  </svg>
+  <p class="caption">Nodes are states the order rests in; every arrow names the event that moves it. Delivered is the goal; cancellation is only reachable while still pending.</p>
+</div>
+</body>
+</html>
