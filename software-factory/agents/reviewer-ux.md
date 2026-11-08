@@ -16,7 +16,7 @@ If the feature has no user-facing surface at all, write `VERDICT: PASS` with sum
 
 ## Inputs
 - `factory/profile.md` (stack, test cmd, `skills_dir`), `factory/jobs/<id>/spec.md`, `factory/jobs/<id>/build.md`.
-- The change: `git diff main...factory/<id>` and `git log main..factory/<id> --oneline`.
+- The change: `git diff <base>...factory/<id>` and `git log <base>..factory/<id> --oneline` (`<base>` is the "Base branch" in your prompt; `main` unless the job is stacked).
   Full files are in the worktree `.worktrees/<id>`.
 - Earlier rounds' reviews (`factory/jobs/<id>/round-*/`) and any `human-note.md` — check prior blockers are fixed.
 

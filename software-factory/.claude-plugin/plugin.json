@@ -1,7 +1,7 @@
 {
   "name": "software-factory",
-  "version": "0.2.0",
-  "description": "A hands-off software factory: /software-factory:factory runs a feature through role agents — planner → spec-writer → builder → four parallel reviewers (security, ux, ui, code) → approver → merge to main or needs-human — each applying bundled engineering skills (tdd, spec, code-review, …). State lives in the project's factory/ folder with a live dashboard.",
+  "version": "0.3.0",
+  "description": "A hands-off software factory: /software-factory:factory grills you first (grilling + ADRs), turns the epic into GitHub issues with native dependencies, builds independent tickets in parallel through role agents (spec-writer → builder → four parallel reviewers → approver), and merges only through pull requests — stacked when a blocker is approved but unmerged, flagged for human review when in doubt. State lives in the project's factory/ folder with a live dashboard.",
   "author": {
     "name": "Yogendra Gautam"
   },
@@ -11,6 +11,9 @@
     "orchestration",
     "code-review",
     "tdd",
-    "dashboard"
+    "dashboard",
+    "github",
+    "pull-requests",
+    "adr"
   ]
 }

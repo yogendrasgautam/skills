@@ -71,8 +71,8 @@
 </aside>
 <script>
 const STAGES = [
-  ["spec", "Spec"], ["build", "Build"], ["review", "Review"],
-  ["approve", "Approve"], ["merged", "Merged"], ["needs-human", "Needs human"],
+  ["blocked", "Blocked"], ["spec", "Spec"], ["build", "Build"], ["review", "Review"],
+  ["approve", "Approve"], ["pr-open", "PR open"], ["merged", "Merged"], ["needs-human", "Needs human"],
 ];
 const REVIEWERS = ["security", "ux", "ui", "code"];
 let board = { jobs: [] }, openId = null, openFile = null, lastJson = "";
@@ -106,6 +106,7 @@ function card(j) {
     <div class="id">${esc(j.id)} ${j.decision ? `<span class="badge ${esc(j.decision)}">${esc(j.decision)}</span>` : ""}</div>
     <div class="title">${esc(j.title || "")}</div>
     <div class="sub">${esc(j.branch || "")}${j.round ? ` · round ${j.round}` : ""}</div>
+    <div class="sub">${j.issue ? `#${esc(j.issue)}` : ""}${j.pr ? ` · PR #${esc(j.pr)}` : ""}${j.base && j.base !== "main" ? ` · stacked on ${esc(j.base)}` : ""}${(j.blockedBy || []).length ? ` · blocked by ${j.blockedBy.map(esc).join(", ")}` : ""}</div>
     ${rounds.map(r => `<div class="round"><span class="n">R${esc(r.n)}</span>${chips(r.reviews)}</div>`).join("")}
     ${j.note ? `<div class="note">${esc(j.note)}</div>` : ""}
   </div>`;

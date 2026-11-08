@@ -19,9 +19,12 @@ software-factory/
 ```
 
 ```
-[epic → planner → backlog.md]  (optional, /factory plan)
-feature → spec-writer → builder ⇄ [security · ux · ui · code] → approver → merge | needs-human
-           (opus)        (opus)     (opus  sonnet sonnet sonnet)   (opus)
+grill (you) ─► ADRs + decisions ─► planner ─► GitHub epic + ticket issues (native blocked-by)
+                                                   │ independent tickets run in parallel
+   ticket ─► spec-writer ─► builder ─► PR ─► [security · ux · ui · code] ─► approver
+              (opus)         (opus)           (opus  sonnet sonnet sonnet)   (opus)
+                                                   │
+                       APPROVE + green CI ─► gh pr merge (squash)   |   doubt ─► PR flagged needs-human-review
 ```
 
 ## What setup creates in your project (`factory/`)
@@ -29,14 +32,15 @@ feature → spec-writer → builder ⇄ [security · ux · ui · code] → appro
 |---|---|
 | `profile.md` | repo profile (stack, test cmd, conventions, skills dir) — written by setup |
 | `board.json` | job state; only the orchestrator writes it; drives the dashboard |
-| `backlog.md` | feature queue for `/factory next` |
-| `plans/<slug>.md` | ticket breakdown of an epic (planner) |
+| `backlog.md` | local mirror of ready tickets for `/factory run` |
+| `plans/<slug>/` | `decisions.md` (grilling output) and `plan.md` (planner ticket breakdown) |
 | `jobs/<id>/` | `spec.md`, `build.md`, `round-N/review-*.md`, `decision.md` |
 | `dashboard.html` | visual board (refreshed from the plugin on every setup) |
 
 ## Agents → bundled skills (`skills/factory/library/`)
 | Agent | Skills |
 |---|---|
+| (orchestrator) | grilling, grill-with-docs |
 | planner | to-tickets, domain-modeling |
 | spec-writer | wayfinder, to-spec, domain-modeling |
 | builder | implement, tdd, codebase-design, diagnosing-bugs |
@@ -48,12 +52,12 @@ feature → spec-writer → builder ⇄ [security · ux · ui · code] → appro
 ## Use
 ```
 /software-factory:factory setup                      # scaffold factory/, detect stack
-/software-factory:factory plan "Todo app with tags"  # epic → tickets in backlog.md
-/software-factory:factory next                       # run first ready backlog item
-/software-factory:factory "Add rate limiting"        # run one feature directly
+/software-factory:factory plan "Todo app with tags"  # grill → ADRs → epic + ticket issues, then run
+/software-factory:factory run                        # run every ready ticket in parallel (next = one)
+/software-factory:factory "Add rate limiting"        # grill, then run one feature directly
 /software-factory:factory approve 003-rate-limiting
 /software-factory:factory rework 003-rate-limiting "use a token bucket"
 ```
 Dashboard: `cd factory && python3 -m http.server 8000` → http://localhost:8000/dashboard.html
 
-Builders work in git worktrees (`.worktrees/<id>`, branch `factory/<id>`); `main` stays checked out.
+Builders work in git worktrees (`.worktrees/<id>`, branch `factory/<id>`) and open PRs; nothing reaches `main` except a merged PR (squash, after approval + green CI). Anything doubtful is left open with the `needs-human-review` label.

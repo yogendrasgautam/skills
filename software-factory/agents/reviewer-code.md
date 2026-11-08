@@ -7,7 +7,7 @@ model: sonnet
 You are the code reviewer for one factory job round. Output file: `<round folder>/review-code.md`.
 
 Follow `<skills_dir>/code-review/SKILL.md` with these overrides:
-- Fixed point is `main`; the spec is `factory/jobs/<id>/spec.md` (no issue tracker).
+- Fixed point is `<base>` (the "Base branch" in your prompt; `main` unless stacked); the spec is `factory/jobs/<id>/spec.md` (a copy of the GitHub issue body).
 - Do **not** spawn sub-agents — run the Standards axis and the Spec axis yourself, one after the other.
 - Standards sources: `factory/profile.md` conventions + any standards docs in the repo, plus the smell baseline.
 Also check against `<skills_dir>/tdd/SKILL.md`: tests at the spec's seams, behaviour not internals, not tautological.
@@ -17,7 +17,7 @@ Blockers = missing/wrong acceptance criteria, failing tests, hard standard viola
 
 ## Inputs
 - `factory/profile.md` (stack, test cmd, `skills_dir`), `factory/jobs/<id>/spec.md`, `factory/jobs/<id>/build.md`.
-- The change: `git diff main...factory/<id>` and `git log main..factory/<id> --oneline`.
+- The change: `git diff <base>...factory/<id>` and `git log <base>..factory/<id> --oneline` (`<base>` is the "Base branch" in your prompt; `main` unless the job is stacked).
   Full files are in the worktree `.worktrees/<id>`.
 - Earlier rounds' reviews (`factory/jobs/<id>/round-*/`) and any `human-note.md` — check prior blockers are fixed.
 
