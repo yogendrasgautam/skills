@@ -114,7 +114,7 @@ Rewrite the whole file on every transition, then validate with `python3 -m json.
    - ensure `.gitignore` has `.worktrees/`;
    - offer (AskUserQuestion) to write/merge `.claude/settings.json` so teammates are prompted to
      install this plugin when they open the repo:
-     `{"extraKnownMarketplaces":{"engineering-skills":{"source":{"source":"github","repo":"mb-yogendra-gautam/skills"}}},"enabledPlugins":{"software-factory@engineering-skills":true}}`
+     `{"extraKnownMarketplaces":{"engineering-skills":{"source":{"source":"github","repo":"yogendrasgautam/skills"}}},"enabledPlugins":{"software-factory@engineering-skills":true}}`
    - `dashboard.html` is refreshed from the template on every setup (it holds no state).
 3. Skills dir is the bundled library: `${CLAUDE_SKILL_DIR}/library` (resolve to an absolute path).
    Check it has `to-spec`, `implement`, `tdd`, `code-review`, `to-tickets`. Missing → the plugin install is broken; stop and say so.

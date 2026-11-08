@@ -5,7 +5,7 @@ the work, each following bundled engineering skills (`skills/factory/library/`).
 
 ## Install
 ```
-/plugin marketplace add mb-yogendra-gautam/skills
+/plugin marketplace add yogendrasgautam/skills
 /plugin install software-factory@engineering-skills
 ```
 
