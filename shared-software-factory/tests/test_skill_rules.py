@@ -348,6 +348,23 @@ class SkillRulesTest(unittest.TestCase):
         self.assertIn("cp site/dashboard.html site/index.html", pages)
         self.assertIn("index.html", pages.split("name: factory-dashboard")[0])
 
+    # ---- re-review: existing Projects boards need a `closed` option ----
+    def test_existing_project_board_gets_closed_option(self):
+        note = "add a `closed` option to the `Stage` field by hand (name exactly `closed`)"
+        block = self.setup_block()
+        refresh = block[block.index("**(c) Refresh**"):block.index("If the open-PR list is non-empty")]
+        self.assertIn(note, " ".join(refresh.split()))
+        projects = block[block.index("   - `projects`: create the Project"):block.index("6. `.claude/settings.json`")]
+        self.assertIn(note, " ".join(projects.split()))
+        root = os.path.join(os.path.dirname(SKILL), "..", "..")
+        for path in (os.path.join(root, "README.md"), os.path.join(TEMPLATES, "README.md")):
+            with open(path, encoding="utf-8") as f:
+                self.assertIn(note, " ".join(f.read().split()), path)
+
+    def test_sync_text_terminal_local_stage_not_kept(self):
+        sync = " ".join(self.text[self.text.index("1. **Sync.**"):self.text.index("2. **Promote.**")].split())
+        self.assertIn("a local `merged`, `closed` or `needs-human` stage is never kept", sync)
+
     # ---- I9 capacity is per developer ----
     def test_capacity_counts_only_own_jobs(self):
         promote = self.text[self.text.index("2. **Promote.**"):self.text.index("**Claim.**")]

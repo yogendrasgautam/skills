@@ -124,9 +124,6 @@ def _mentions(pr: dict, number: int) -> bool:
     return re.search(r"#%d(?!\d)" % number, pr.get("body") or "") is not None
 
 
-_FACTORY_BRANCH_RE = re.compile(r"factory/\d+-")
-
-
 def _branch_prefix(number: int) -> str:
     return "factory/%d-" % number
 
@@ -136,13 +133,14 @@ def _pick_pr(number: int, prs: list):
 
     PRs from forks are ignored. A PR whose head branch is `factory/<number>-...` is
     linked; a `#<number>` mention in the body counts only when no branch matches, and
-    never for a PR on another job's `factory/<n>-` branch (e.g. "stacked on #41").
+    never for a PR on any other `factory/` branch: another job's (e.g. "stacked on #41"),
+    `factory/docs-*` or `factory/setup*`.
     """
     own = [p for p in prs if not p.get("isCrossRepository")]
     linked = [p for p in own if (p.get("headRefName") or "").startswith(_branch_prefix(number))]
     if not linked:
         linked = [p for p in own
-                  if _mentions(p, number) and not _FACTORY_BRANCH_RE.match(p.get("headRefName") or "")]
+                  if _mentions(p, number) and not (p.get("headRefName") or "").startswith("factory/")]
     for state in ("OPEN", "MERGED"):
         group = sorted(
             (p for p in linked if p.get("state") == state),
@@ -329,8 +327,11 @@ def merge_local_state(new_board: dict, old_board: dict, me: Optional[str] = None
                 job[key] = old[key]
         if not job.get("round") and old.get("round"):
             job["round"] = old["round"]
+        # A terminal stage on either side is GitHub's call (a local one must not stick
+        # after a reopen or a teammate's approve).
         if (me and job.get("owner") == me and old.get("stage")
-                and job.get("stage") not in TERMINAL_STAGES):
+                and job.get("stage") not in TERMINAL_STAGES
+                and old.get("stage") not in TERMINAL_STAGES):
             job["stage"] = old["stage"]
     return new_board
 

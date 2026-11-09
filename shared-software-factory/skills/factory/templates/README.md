@@ -83,6 +83,8 @@ there is no shared local state.
   Projects mode needs a token: the default `GITHUB_TOKEN` cannot write Projects v2. Create a token
   with the `project` scope, add it with `gh secret set FACTORY_PROJECT_TOKEN`, and set the variable
   `FACTORY_PROJECT_NUMBER` (setup sets the variable). Without the secret the workflow warns and exits 0.
+  A Projects board created before the `closed` stage existed has no such option: add a `closed`
+  option to the `Stage` field by hand (name exactly `closed`), or closed jobs only log a warning.
 - **Setup has three cases.** *First*: the first developer runs `setup`, which opens a PR with the
   shared config (`.factory/profile.md`, helper, dashboard workflow, optional `.claude/settings.json`).
   *Join*: later developers run `setup` after that PR merges; it only builds their local cache.

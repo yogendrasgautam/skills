@@ -163,7 +163,9 @@ from the PR branch once a PR exists, so renaming the issue never changes it.
      `factory/setup-refresh` (create it with `git worktree add .worktrees/setup-refresh -b
      factory/setup-refresh main`; same flagging as step 8). `.factory/profile.md` is never
      regenerated: if the stack changed, tell the user to edit it by hand through a normal PR.
-     Nothing differs → say "already current" and stop.
+     Nothing differs → say "already current" and stop. In `projects` mode, tell the user that a
+     board created before the `closed` stage existed lacks that option: add a `closed` option to
+     the `Stage` field by hand (name exactly `closed`), or closed jobs only log a warning.
    - If the open-PR list is non-empty (any case) → another setup is in flight: stop and tell the
      developer to wait for that PR (print the url as a link) to merge, then run setup again.
 3. Local cache (skip files that already exist — never overwrite project state):
@@ -201,7 +203,8 @@ from the PR branch once a PR exists, so renaming the issue never changes it.
      `gh project create --owner <owner> --title "Factory" --format json --jq .number` (this prints the
      project number `<n>`), then
      `gh project field-create <n> --owner <owner> --name Stage --data-type SINGLE_SELECT --single-select-options "blocked,spec,build,review,approve,pr-open,needs-human,merged,closed"`
-     (the option names must be exactly those nine stages), then store the number with
+     (the option names must be exactly those nine stages; if the user reuses an existing Projects
+     board without one, add a `closed` option to the `Stage` field by hand (name exactly `closed`)), then store the number with
      `gh variable set FACTORY_PROJECT_NUMBER --body <n>`. Tell the user to create a token with the
      `project` scope and add it with `gh secret set FACTORY_PROJECT_TOKEN`; the factory never asks
      for, reads or prints the token value. Until the secret exists the workflow exits 0 with a warning.
@@ -294,8 +297,10 @@ Repeat until nothing is runnable or in flight (`next` = at most one new job):
    that is yours, `gh pr view` (state, checks, base) and read its blocked-by links from GitHub
    (the rebuild leaves `blockedBy` empty; you edit `blockedBy`, `reviews`, `rounds` and
    `decision` in `factory/board.json`, and `board` preserves them for jobs still on GitHub). A PR a human merged/closed → update the board.
-   For your own jobs `stage` is kept locally between Syncs (you are authoritative for it; only a
-   derived `merged`, `closed` or `needs-human` overrides it). Other developers' jobs show the stage
+   For your own jobs `stage` is kept locally between Syncs (you are authoritative for it; a
+   derived `merged`, `closed` or `needs-human` overrides it, and a local `merged`, `closed` or
+   `needs-human` stage is never kept: the derived stage replaces it, e.g. after a reopen or a
+   teammate's `approve`). Other developers' jobs show the stage
    derived from GitHub, so the derived stage of a job in a rework round may be stale (`approve`)
    until its owner's clone runs. Run
    `git fetch origin` and `git -C <main checkout> pull --ff-only`. Never drive a job whose
