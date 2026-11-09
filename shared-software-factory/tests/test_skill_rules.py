@@ -5,8 +5,19 @@ import unittest
 SKILL = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "skills", "factory", "SKILL.md")
 
 
+TEMPLATES = os.path.join(os.path.dirname(SKILL), "templates")
+WORKFLOWS = ("factory-dashboard-pages.yml", "factory-dashboard-projects.yml")
+# Every pipeline stage, in Project option order (`closed` added by the final review, I3).
+STAGES = ("blocked", "spec", "build", "review", "approve", "pr-open", "needs-human", "merged", "closed")
+
+
 def read_skill() -> str:
     with open(SKILL, encoding="utf-8") as f:
+        return f.read()
+
+
+def read_template(*parts) -> str:
+    with open(os.path.join(TEMPLATES, *parts), encoding="utf-8") as f:
         return f.read()
 
 
@@ -165,7 +176,7 @@ class SkillRulesTest(unittest.TestCase):
         block = self.setup_block()
         self.assertIn("gh project create", block)
         self.assertIn("gh project field-create", block)
-        self.assertIn("blocked,spec,build,review,approve,pr-open,needs-human,merged", block)
+        self.assertIn('"%s"' % ",".join(STAGES), block)
         self.assertIn("FACTORY_PROJECT_TOKEN", block)
         self.assertIn("gh variable set FACTORY_PROJECT_NUMBER", block)
         self.assertIn("gh secret set FACTORY_PROJECT_TOKEN", block)
@@ -293,6 +304,49 @@ class SkillRulesTest(unittest.TestCase):
         sync = self.text[self.text.index("1. **Sync.**"):self.text.index("2. **Promote.**")]
         self.assertIn("for your own jobs `stage` is kept locally between syncs", sync.lower())
         self.assertIn("may be stale (`approve`)", sync)
+
+    # ---- final review: I3 closed stage everywhere ----
+    def test_closed_stage_in_schema_promote_and_status(self):
+        self.assertIn("| merged | needs-human | closed", self.text)
+        promote = self.text[self.text.index("2. **Promote.**"):self.text.index("**Claim.**")]
+        self.assertIn("`closed`", promote)
+        self.assertIn("`closed`", self.section("### `status` — read-only team view"))
+
+    def test_workflows_and_dashboard_know_every_stage(self):
+        projects = read_template("workflows", "factory-dashboard-projects.yml")
+        header = " ".join(l.lstrip("# ") for l in projects.splitlines() if l.startswith("#"))
+        self.assertIn(", ".join(STAGES) + ".", header)
+        html = read_template("dashboard.html")
+        for stage in STAGES:
+            self.assertIn('["%s", ' % stage, html)
+        self.assertIn("repeat(%d," % len(STAGES), html)
+
+    # ---- I5 blockerTip ----
+    def test_blocker_tip_schema_and_restack(self):
+        self.assertIn('"blockerTip"', self.text)
+        merge = self.text[self.text.index("**Merge** (a `pr-open` job"):self.text.index("4. Loop back")]
+        self.assertIn("`blockerTip`", merge)
+        self.assertIn("BEFORE", merge)
+        self.assertIn("--onto origin/main <blockerTip>", merge)
+        for field in ("`base`", "`plan`", "`ticket`", "`epic`", "`blockerTip`"):
+            self.assertIn(field, self.section("## board.json").split("```json")[0])
+
+    # ---- I7 claim race ----
+    def test_claim_verify_uses_assigned_events(self):
+        block = self.claim_block()
+        self.assertIn("earliest `assigned` event", block)
+
+    # ---- I8 / C2 / Pages root: workflow templates ----
+    def test_workflow_templates(self):
+        for name in WORKFLOWS:
+            text = read_template("workflows", name)
+            self.assertIn('cron: "0 */6 * * *"', text, name)
+            self.assertNotIn("*/15", text, name)
+            self.assertIn("minutes", text, name)
+            self.assertIn("--me 'github-actions[bot]'", text, name)
+        pages = read_template("workflows", "factory-dashboard-pages.yml")
+        self.assertIn("cp site/dashboard.html site/index.html", pages)
+        self.assertIn("index.html", pages.split("name: factory-dashboard")[0])
 
     def test_agents_do_not_read_skills_dir_from_profile(self):
         agents = os.path.join(os.path.dirname(SKILL), "..", "..", "agents")

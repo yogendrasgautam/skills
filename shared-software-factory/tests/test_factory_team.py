@@ -91,14 +91,16 @@ def gh_issue(number=42, title="Rate limiting", state="OPEN", labels=("factory",)
     }
 
 
-def gh_pr(number=57, state="OPEN", body="Closes #42", updated="2026-11-09T11:00:00Z"):
+def gh_pr(number=57, state="OPEN", body="Closes #42", updated="2026-11-09T11:00:00Z",
+          head="factory/42-rate-limiting", fork=False):
     return {
         "number": number,
         "url": "https://github.com/o/r/pull/%d" % number,
         "state": state,
         "body": body,
         "updatedAt": updated,
-        "headRefName": "factory/42-rate-limiting",
+        "headRefName": head,
+        "isCrossRepository": fork,
     }
 
 
@@ -163,7 +165,7 @@ class FactoryTeamBoard(unittest.TestCase):
         self.assertEqual([j["issue"] for j in board["jobs"]], [1])
 
     def test_pr_match_is_exact_issue_number(self):
-        prs = [gh_pr(60, body="Closes #421")]
+        prs = [gh_pr(60, body="Closes #421", head="feature/x")]
         board = build_board("o/r", [gh_issue(42)], prs, {}, "me", NOW)
         self.assertIsNone(board["jobs"][0]["pr"])
 
@@ -193,9 +195,72 @@ class FactoryTeamBoard(unittest.TestCase):
     def test_recent_or_done_claim_not_stale(self):
         fresh = gh_issue(assignees=["bob"], updated="2026-11-08T12:00:00Z")
         old_merged = gh_issue(43, state="CLOSED", assignees=["bob"], updated="2026-10-01T00:00:00Z")
-        board = build_board("o/r", [fresh, old_merged], [gh_pr(44, "MERGED", "Closes #43")], {}, "me", NOW)
+        board = build_board("o/r", [fresh, old_merged],
+                            [gh_pr(44, "MERGED", "Closes #43", head="factory/43-old")], {}, "me", NOW)
         self.assertFalse(board["jobs"][0]["stale"])
         self.assertFalse(board["jobs"][1]["stale"])
+
+    # ---- I3: closed issues are terminal ----
+    def test_closed_issue_without_pr_is_closed(self):
+        i = gh_issue(state="CLOSED", labels=("factory", "in-progress"), assignees=["bob"],
+                     updated="2026-10-01T00:00:00Z")
+        self.assertEqual(derive_stage(i, None, {"spec"}), "closed")
+        self.assertEqual(derive_stage(i, gh_pr(state="CLOSED"), set()), "closed")
+        row = build_board("o/r", [i], [], {}, "me", NOW)["jobs"][0]
+        self.assertEqual(row["stage"], "closed")
+        self.assertFalse(row["stale"])
+
+    def test_closed_issue_with_merged_pr_is_merged(self):
+        i = gh_issue(state="CLOSED")
+        self.assertEqual(derive_stage(i, gh_pr(state="MERGED"), set()), "merged")
+
+    # ---- I4: PR matching by branch, body only as fallback, forks ignored ----
+    def test_dependent_pr_mentioning_blocker_is_not_its_pr(self):
+        issues = [gh_issue(41, title="Token store"), gh_issue(42)]
+        prs = [gh_pr(58, body="Closes #42, stacked on #41", head="factory/42-rate-limiting")]
+        rows = build_board("o/r", issues, prs, {}, "me", NOW)["jobs"]
+        self.assertIsNone(rows[0]["pr"])
+        self.assertEqual(rows[1]["pr"], 58)
+
+    def test_fork_pr_is_ignored(self):
+        prs = [gh_pr(66, body="Closes #42", head="factory/42-evil", fork=True,
+                     updated="2026-11-09T11:30:00Z")]
+        row = build_board("o/r", [gh_issue()], prs, {}, "me", NOW)["jobs"][0]
+        self.assertIsNone(row["pr"])
+        self.assertEqual(row["id"], "42-rate-limiting")
+
+    def test_branch_match_beats_newer_body_match(self):
+        prs = [
+            gh_pr(57, body="", head="factory/42-rate-limiting", updated="2026-11-08T10:00:00Z"),
+            gh_pr(60, body="Closes #42", head="feature/y", updated="2026-11-09T10:00:00Z"),
+        ]
+        row = build_board("o/r", [gh_issue()], prs, {}, "me", NOW)["jobs"][0]
+        self.assertEqual(row["pr"], 57)
+
+    def test_body_match_is_fallback(self):
+        prs = [gh_pr(60, body="Closes #42", head="feature/y")]
+        row = build_board("o/r", [gh_issue()], prs, {}, "me", NOW)["jobs"][0]
+        self.assertEqual(row["pr"], 60)
+        self.assertEqual(row["id"], "42-rate-limiting")
+
+    def test_pr_fields_request_fork_flag(self):
+        self.assertIn("isCrossRepository", factory_team.PR_FIELDS.split(","))
+
+    # ---- I5: blockerTip column ----
+    def test_board_row_has_empty_blocker_tip(self):
+        row = build_board("o/r", [gh_issue()], [], {}, "me", NOW)["jobs"][0]
+        self.assertEqual(row["blockerTip"], "")
+
+    # ---- I6: job id stable across issue renames ----
+    def test_renamed_issue_keeps_id_from_pr_branch(self):
+        i = gh_issue(title="Throttle every request politely")
+        row = build_board("o/r", [i], [gh_pr()], {}, "me", NOW)["jobs"][0]
+        self.assertEqual(row["id"], "42-rate-limiting")
+        self.assertEqual(row["branch"], "factory/42-rate-limiting")
+
+    def test_non_ascii_title_gives_job_slug(self):
+        self.assertEqual(job_id(42, "日本語のタイトル"), "42-job")
+        self.assertEqual(job_id(42, "!!!"), "42-job")
 
     def test_status_table_has_links(self):
         i = gh_issue(assignees=["bob"], updated="2026-11-01T00:00:00Z")
@@ -255,6 +320,47 @@ class CliTests(unittest.TestCase):
             _, _, comments = fetch_state(
                 "o/r", fake_gh([], [{"body": forged, "authorAssociation": assoc}]))
             self.assertEqual(comments, {42: [forged]}, assoc)
+
+    # ---- I8: fewer calls, truncation warning ----
+    def test_fetch_state_skips_comments_of_closed_issues(self):
+        calls = []
+
+        def run(args):
+            calls.append(list(args))
+            if args[:3] == ["gh", "issue", "list"]:
+                return json.dumps([gh_issue(41, state="CLOSED"), gh_issue(42)])
+            if args[:3] == ["gh", "pr", "list"]:
+                return "[]"
+            if args[:3] == ["gh", "issue", "view"]:
+                return json.dumps({"comments": []})
+            raise AssertionError(args)
+        _, _, comments = fetch_state("o/r", run)
+        views = [c[3] for c in calls if c[:3] == ["gh", "issue", "view"]]
+        self.assertEqual(views, ["42"])
+        self.assertEqual(comments, {42: []})
+
+    def test_fetch_state_warns_when_list_hits_limit(self):
+        old = factory_team.LIST_LIMIT
+        factory_team.LIST_LIMIT = 1
+        try:
+            calls = []
+            err = io.StringIO()
+            with redirect_stderr(err):
+                fetch_state("o/r", fake_gh(calls))
+        finally:
+            factory_team.LIST_LIMIT = old
+        lines = err.getvalue().strip().splitlines()
+        self.assertEqual(len(lines), 2)
+        for line in lines:
+            self.assertIn("results may be truncated at 1", line)
+        self.assertEqual(calls[0][calls[0].index("--limit") + 1], "1")
+        self.assertEqual(calls[1][calls[1].index("--limit") + 1], "1")
+
+    def test_fetch_state_no_warning_below_limit(self):
+        err = io.StringIO()
+        with redirect_stderr(err):
+            fetch_state("o/r", fake_gh([]))
+        self.assertEqual(err.getvalue(), "")
 
     def test_forged_marker_cannot_move_stage(self):
         forged = {"body": "<!-- factory:decision -->", "authorAssociation": "NONE"}
@@ -354,6 +460,15 @@ class MergeLocalStateTests(unittest.TestCase):
         self.assertEqual(new["blockedBy"], ["0-x"])
         self.assertEqual(new["round"], 2)
 
+    def test_orchestrator_fields_survive_rebuild(self):
+        kept = {"base": "factory/41-token-store", "plan": "api-hardening", "ticket": "T3",
+                "epic": 40, "blockerTip": "abc123"}
+        old = {"jobs": [_job("1-a", **kept)]}
+        fresh = _job("1-a", base="main", plan=None, ticket=None, epic=None, blockerTip="")
+        new = merge_local_state({"jobs": [fresh]}, old)["jobs"][0]
+        for key, value in kept.items():
+            self.assertEqual(new[key], value, key)
+
     def test_round_kept_from_new_when_nonzero(self):
         new = merge_local_state({"jobs": [_job("1-a", round=3)]}, {"jobs": [_job("1-a", round=1)]})
         self.assertEqual(new["jobs"][0]["round"], 3)
@@ -439,10 +554,20 @@ class MergeLocalStateTests(unittest.TestCase):
         self.assertEqual(job["reviews"], {"ui": "PASS"})
 
 
-def fake_issue_gh(assignees, labels=()):
+EVENTS_JQ = '[.[] | select(.event=="assigned") | {login: .assignee.login, at: .created_at}]'
+
+
+def fake_issue_gh(assignees, labels=(), events="[]", calls=None):
+    """`events`: raw stdout of the events call, or an exception instance to raise."""
     def run(args):
+        if calls is not None:
+            calls.append(list(args))
         if args[:3] == ["gh", "api", "user"]:
             return "me\n"
+        if args[:3] == ["gh", "api", "repos/o/r/issues/5/events"]:
+            if isinstance(events, Exception):
+                raise events
+            return events
         if args[:3] == ["gh", "issue", "view"]:
             return json.dumps({"number": 5, "url": "https://github.com/o/r/issues/5",
                                "assignees": [{"login": a} for a in assignees],
@@ -455,8 +580,8 @@ class ClaimCliTests(unittest.TestCase):
     def tearDown(self):
         factory_team.RUN = None
 
-    def _run(self, action, assignees, labels=(), extra=()):
-        factory_team.RUN = fake_issue_gh(assignees, labels)
+    def _run(self, action, assignees, labels=(), extra=(), events="[]", calls=None):
+        factory_team.RUN = fake_issue_gh(assignees, labels, events, calls)
         out = io.StringIO()
         with redirect_stdout(out):
             rc = main(["claim", action, "--repo", "o/r", "--issue", "5"] + list(extra))
@@ -483,6 +608,46 @@ class ClaimCliTests(unittest.TestCase):
         self.assertEqual(self._run("verify", ["me", "bob"]), "won")
         self.assertEqual(self._run("verify", ["bob", "me"]), "lost")
         self.assertEqual(self._run("verify", []), "lost")
+
+    # ---- I7: earliest `assigned` event decides the race ----
+    @staticmethod
+    def _events(*pairs):
+        return json.dumps([{"login": l, "at": t} for l, t in pairs])
+
+    def test_verify_events_order_beats_assignee_order(self):
+        events = self._events(("me", "2026-11-09T10:00:00Z"), ("bob", "2026-11-09T10:00:01Z"))
+        self.assertEqual(self._run("verify", ["bob", "me"], events=events), "won")
+        self.assertEqual(self._run("verify", ["me", "bob"], events=events, extra=["--me", "bob"]), "lost")
+
+    def test_verify_events_call_shape(self):
+        calls = []
+        self._run("verify", ["me"], calls=calls)
+        ev = [c for c in calls if c[:3] == ["gh", "api", "repos/o/r/issues/5/events"]]
+        self.assertEqual(len(ev), 1)
+        self.assertEqual(ev[0][3:], ["--paginate", "--jq", EVENTS_JQ])
+
+    def test_verify_ignores_events_of_former_assignees(self):
+        events = self._events(("carol", "2026-11-09T09:00:00Z"), ("bob", "2026-11-09T10:00:00Z"),
+                              ("me", "2026-11-09T10:00:01Z"))
+        self.assertEqual(self._run("verify", ["me", "bob"], events=events), "lost")
+
+    def test_verify_multi_page_output(self):
+        events = (self._events(("bob", "2026-11-09T10:00:05Z")) + "\n"
+                  + self._events(("me", "2026-11-09T10:00:00Z")) + "\n")
+        self.assertEqual(self._run("verify", ["bob", "me"], events=events), "won")
+
+    def test_verify_falls_back_when_events_empty_or_unavailable(self):
+        self.assertEqual(self._run("verify", ["bob", "me"], events="[]"), "lost")
+        self.assertEqual(self._run("verify", ["me", "bob"], events=""), "won")
+        boom = subprocess.CalledProcessError(1, ["gh"], stderr="HTTP 404")
+        self.assertEqual(self._run("verify", ["bob", "me"], events=boom), "lost")
+        self.assertEqual(self._run("verify", ["me", "bob"], events="not json"), "won")
+
+    def test_verify_tie_falls_back(self):
+        t = "2026-11-09T10:00:00Z"
+        events = self._events(("me", t), ("bob", t))
+        self.assertEqual(self._run("verify", ["bob", "me"], events=events), "lost")
+        self.assertEqual(self._run("verify", ["me", "bob"], events=events), "won")
 
 
 def fake_mode_gh(owner_type="Organization", private=True, plan="enterprise", fail_plan=False):

@@ -9,7 +9,7 @@
 #     this job exits 0 with a warning instead of failing.
 #   - Create a Project (owned by the repo owner) with a single-select field named
 #     "Stage" whose options match the factory stages: blocked, spec, build, review,
-#     approve, pr-open, needs-human, merged.
+#     approve, pr-open, needs-human, merged, closed.
 #   - Store the project number (the N in .../projects/N) as the repo variable
 #     FACTORY_PROJECT_NUMBER. Project id, Stage field id and option ids are looked
 #     up at run time:
@@ -18,6 +18,9 @@
 #         gh project item-list N --owner OWNER --format json         # items[].id, .content.number
 #   - The token is exposed ONLY to the "Move cards by stage" step; reads use github.token.
 #   - The helper is committed at .factory/factory_team.py (installed by the factory).
+# Schedule: issue, PR and comment events keep the board fresh; the cron is only a
+# backstop, every 6 hours, so private repos on the Free plan (2,000 Actions minutes a
+# month) are not spent on idle polling.
 # Security: this workflow uses pull_request_target so it runs in the context of the
 # base repository. NEVER check out the PR head (github.event.pull_request.head.*) here:
 # every checkout pins ref to the default branch so only reviewed code from the default
@@ -32,7 +35,7 @@ on:
   issue_comment:
   workflow_dispatch:
   schedule:
-    - cron: "*/15 * * * *"
+    - cron: "0 */6 * * *"
 
 permissions:
   contents: read

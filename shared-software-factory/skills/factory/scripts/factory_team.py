@@ -16,9 +16,9 @@ IN_PROGRESS_LABEL = "in-progress"
 
 
 def job_id(issue: int, title_or_slug: str) -> str:
-    """Job id from an issue number and the first four words of its slug."""
+    """Job id from an issue number and the first four words of its slug ("job" if empty)."""
     slug = re.sub(r"[^a-z0-9]+", "-", title_or_slug.lower()).strip("-")
-    words = [w for w in slug.split("-")[:4] if w]
+    words = [w for w in slug.split("-")[:4] if w] or ["job"]
     return "-".join([str(issue)] + words)
 
 
@@ -54,6 +54,25 @@ def decide_claim_winner(issue_after_write: dict, me: str) -> bool:
     return bool(assignees) and assignees[0] == me
 
 
+def decide_claim_winner_by_events(issue_after_write: dict, events: list, me: str) -> bool:
+    """True if `me` has the earliest `assigned` event among the current assignees.
+
+    `events` is a list of {"login", "at"}. No usable event, or a tie for the
+    earliest time, falls back to `decide_claim_winner` (first assignee).
+    """
+    current = set(_assignees(issue_after_write))
+    stamps = [
+        (e.get("at"), e.get("login")) for e in events or []
+        if isinstance(e, dict) and e.get("login") in current and e.get("at")
+    ]
+    if stamps:
+        first = min(at for at, _ in stamps)
+        winners = {login for at, login in stamps if at == first}
+        if len(winners) == 1:
+            return winners.pop() == me
+    return decide_claim_winner(issue_after_write, me)
+
+
 # --- Board rebuild from GitHub state -------------------------------------------------
 
 STALE_AFTER_DAYS = 3
@@ -78,6 +97,8 @@ def derive_stage(issue: dict, pr: Optional[dict], markers: set) -> str:
     pr_state = (pr or {}).get("state")
     if pr_state == "MERGED":
         return "merged"
+    if issue.get("state") == "CLOSED":
+        return "closed"
     if "needs-human-review" in labels:
         return "needs-human"
     if pr_state == "OPEN":
@@ -103,9 +124,25 @@ def _mentions(pr: dict, number: int) -> bool:
     return re.search(r"#%d(?!\d)" % number, pr.get("body") or "") is not None
 
 
+_FACTORY_BRANCH_RE = re.compile(r"factory/\d+-")
+
+
+def _branch_prefix(number: int) -> str:
+    return "factory/%d-" % number
+
+
 def _pick_pr(number: int, prs: list):
-    """(chosen PR or None, note). Open PRs win; a merged PR is used only if none is open."""
-    linked = [p for p in prs if _mentions(p, number)]
+    """(chosen PR or None, note). Open PRs win; a merged PR is used only if none is open.
+
+    PRs from forks are ignored. A PR whose head branch is `factory/<number>-...` is
+    linked; a `#<number>` mention in the body counts only when no branch matches, and
+    never for a PR on another job's `factory/<n>-` branch (e.g. "stacked on #41").
+    """
+    own = [p for p in prs if not p.get("isCrossRepository")]
+    linked = [p for p in own if (p.get("headRefName") or "").startswith(_branch_prefix(number))]
+    if not linked:
+        linked = [p for p in own
+                  if _mentions(p, number) and not _FACTORY_BRANCH_RE.match(p.get("headRefName") or "")]
     for state in ("OPEN", "MERGED"):
         group = sorted(
             (p for p in linked if p.get("state") == state),
@@ -136,7 +173,7 @@ def build_board(repo: str, issues: list, prs: list, comments: dict, me: str, now
         updated = issue.get("updatedAt", "")
         stale = (
             claim.state != "free"
-            and stage not in ("merged", "needs-human")
+            and stage not in ("merged", "closed", "needs-human")
             and bool(updated)
             and now_dt - _parse_ts(updated) > timedelta(days=STALE_AFTER_DAYS)
         )
@@ -145,7 +182,12 @@ def build_board(repo: str, issues: list, prs: list, comments: dict, me: str, now
             for m in markers
             if m.startswith("review round-") and m.rsplit("-", 1)[1].isdigit()
         ]
-        jid = job_id(number, issue.get("title", ""))
+        # The PR branch pins the id, so renaming the issue never changes it.
+        head = (pr or {}).get("headRefName") or ""
+        if head.startswith(_branch_prefix(number)):
+            jid = head[len("factory/"):]
+        else:
+            jid = job_id(number, issue.get("title", ""))
         jobs.append({
             "id": jid,
             "title": issue.get("title", ""),
@@ -160,6 +202,7 @@ def build_board(repo: str, issues: list, prs: list, comments: dict, me: str, now
             "blockedBy": [],
             "branch": "factory/" + jid,
             "base": "main",
+            "blockerTip": "",
             "stage": stage,
             "round": max(rounds) if rounds else 0,
             "reviews": {},
@@ -196,7 +239,8 @@ def render_status(board: dict, repo: str) -> str:
 # --- gh-backed CLI -------------------------------------------------------------------
 
 ISSUE_FIELDS = "number,title,url,state,labels,assignees,updatedAt"
-PR_FIELDS = "number,url,state,body,updatedAt,headRefName"
+PR_FIELDS = "number,url,state,body,updatedAt,headRefName,isCrossRepository"
+LIST_LIMIT = 500
 
 # Tests (and Task 4) may override the runner; None means the real `gh`.
 RUN: Optional[Callable] = None
@@ -210,15 +254,25 @@ TRUSTED_ASSOCIATIONS = ("OWNER", "MEMBER", "COLLABORATOR")
 
 
 def fetch_state(repo: str, run: Callable):
-    """(issues, prs, {issue number: [comment bodies]}) from GitHub via `run(argv) -> stdout`."""
+    """(issues, prs, {open issue number: [comment bodies]}) from GitHub via `run(argv) -> stdout`.
+
+    Comments are fetched only for open issues: a closed issue's stage comes from its
+    state and PR alone.
+    """
+    limit = str(LIST_LIMIT)
     issues = json.loads(run([
         "gh", "issue", "list", "--repo", repo, "--label", "factory", "--state", "all",
-        "--limit", "500", "--json", ISSUE_FIELDS]))
+        "--limit", limit, "--json", ISSUE_FIELDS]))
     prs = json.loads(run([
         "gh", "pr", "list", "--repo", repo, "--state", "all",
-        "--limit", "500", "--json", PR_FIELDS]))
+        "--limit", limit, "--json", PR_FIELDS]))
+    for kind, items in (("gh issue list", issues), ("gh pr list", prs)):
+        if len(items) >= LIST_LIMIT:
+            sys.stderr.write("warning: %s results may be truncated at %d\n" % (kind, LIST_LIMIT))
     comments = {}
     for issue in issues:
+        if issue.get("state") == "CLOSED":
+            continue
         n = issue["number"]
         data = json.loads(run(["gh", "issue", "view", str(n), "--repo", repo, "--json", "comments"]))
         # Only repo insiders may move a job's state; comments without the field are dropped.
@@ -251,7 +305,9 @@ def _board_for(args, run: Callable, me: str) -> dict:
     return build_board(args.repo, issues, prs, comments, me, now)
 
 
-LOCAL_FIELDS = ("reviews", "rounds", "decision", "blockedBy")
+# Orchestrator-owned fields that cannot be derived from GitHub; kept across rebuilds.
+LOCAL_FIELDS = ("reviews", "rounds", "decision", "blockedBy",
+                "base", "plan", "ticket", "epic", "blockerTip")
 # Derived stages that override the orchestrator's own `stage` (GitHub truth wins).
 TERMINAL_STAGES = ("merged", "closed", "needs-human")
 
@@ -309,7 +365,40 @@ def _cmd_claim(args, run):
         else:
             sys.stdout.write(c.state + "\n")
     else:
-        sys.stdout.write("won\n" if decide_claim_winner(issue, me) else "lost\n")
+        events = _assigned_events(args.repo, args.issue, run)
+        won = decide_claim_winner_by_events(issue, events, me)
+        sys.stdout.write("won\n" if won else "lost\n")
+
+
+ASSIGNED_EVENTS_JQ = '[.[] | select(.event=="assigned") | {login: .assignee.login, at: .created_at}]'
+
+
+def _json_values(text: str) -> list:
+    """Every JSON value in `text` (`gh --paginate --jq` prints one array per page)."""
+    decoder = json.JSONDecoder()
+    values, i, text = [], 0, text or ""
+    while True:
+        while i < len(text) and text[i].isspace():
+            i += 1
+        if i >= len(text):
+            return values
+        value, i = decoder.raw_decode(text, i)
+        values.append(value)
+
+
+def _assigned_events(repo: str, number: int, run: Callable) -> list:
+    """[{login, at}] of the issue's `assigned` events; [] when unavailable."""
+    try:
+        out = run(["gh", "api", "repos/%s/issues/%d/events" % (repo, number),
+                   "--paginate", "--jq", ASSIGNED_EVENTS_JQ])
+        pages = _json_values(out)
+    except (subprocess.CalledProcessError, ValueError):
+        return []
+    events = []
+    for page in pages:
+        if isinstance(page, list):
+            events.extend(page)
+    return events
 
 
 def _cmd_status(args, run):

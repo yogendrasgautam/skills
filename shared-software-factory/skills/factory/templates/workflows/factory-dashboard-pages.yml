@@ -9,6 +9,11 @@
 #   - Access restriction (who may view the dashboard) is configured in
 #     repo Settings -> Pages (private visibility needs GitHub Enterprise Cloud).
 #   - The helper is committed at .factory/factory_team.py (installed by the factory).
+#   - The dashboard is published twice, as dashboard.html and as index.html, so the
+#     site root is not a 404.
+# Schedule: issue, PR and comment events keep the dashboard fresh; the cron is only a
+# backstop, every 6 hours, so private repos on the Free plan (2,000 Actions minutes a
+# month) are not spent on idle polling.
 # Security: this workflow uses pull_request_target so it runs in the context of the
 # base repository. NEVER check out the PR head (github.event.pull_request.head.*) here:
 # every checkout pins ref to the default branch so only reviewed code from the default
@@ -23,7 +28,7 @@ on:
   issue_comment:
   workflow_dispatch:
   schedule:
-    - cron: "*/15 * * * *"
+    - cron: "0 */6 * * *"
 
 permissions:
   contents: read
@@ -53,7 +58,9 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         # --me is explicit: GITHUB_TOKEN may not read /user (403), and the bot owns no jobs.
-        run: python3 .factory/factory_team.py dashboard --repo ${{ github.repository }} --out site --me 'github-actions[bot]'
+        run: |
+          python3 .factory/factory_team.py dashboard --repo ${{ github.repository }} --out site --me 'github-actions[bot]'
+          cp site/dashboard.html site/index.html
       - uses: actions/upload-pages-artifact@v3.0.1
         with:
           path: site

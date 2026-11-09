@@ -48,6 +48,7 @@ Readiness of a ticket (blockers come from the issue's native "blocked by" links)
 | all blockers `merged` | start now, branch from `main` |
 | a blocker is `pr-open` (approved, PR not yet merged) and every other blocker is merged | **stack**: branch from the blocker's branch, PR targets that branch |
 | a blocker is anywhere else (blocked/spec/build/review/approve/`needs-human`) | wait |
+| a blocker is `closed` (issue closed without a merged PR) | wait, and tell the user the blocker was abandoned (link it) |
 
 Agents ship in this plugin and are namespaced `shared-software-factory:<name>` — `planner`,
 `spec-writer`, `builder`, `reviewer-security`, `reviewer-ux`, `reviewer-ui`, `reviewer-code`,
@@ -102,8 +103,12 @@ from GitHub inputs. It is **not** the complete board: read blocked-by links from
 (`gh api repos/<repo>/issues/<n>/dependencies/blocked_by`, falling back to the issue's
 `## Blocked by` body line), and record review chips, rounds, decision and blockedBy yourself by
 editing those four fields in `factory/board.json`; `factory_team.py board` preserves them across
-rebuilds for every job still on GitHub (jobs gone from GitHub are dropped). Jobs of other developers appear with `owner` = their login; they are visible
-but never yours to drive. Each job also carries `issueUrl` (and a PR URL) for links.
+rebuilds for every job still on GitHub (jobs gone from GitHub are dropped). It likewise preserves
+`base`, `plan`, `ticket`, `epic` and `blockerTip` (the blocker branch's pre-merge tip SHA, for a
+restack), and for **your own** jobs it keeps your `stage` unless GitHub says `merged`, `closed` or
+`needs-human`. Jobs of other developers appear with `owner` = their login; they are visible
+but never yours to drive. Each job also carries `issueUrl` (and a PR URL) for links. The `id` comes
+from the PR branch once a PR exists, so renaming the issue never changes it.
 
 ```json
 { "jobs": [ {
@@ -113,7 +118,8 @@ but never yours to drive. Each job also carries `issueUrl` (and a PR URL) for li
   "blockedBy": ["41-token-store"],        // job ids; mirrors the issue's native blocked-by links
   "branch": "factory/42-rate-limiting",
   "base": "main",                          // or the blocker's branch when stacked
-  "stage": "review",   // blocked | spec | build | review | approve | pr-open | merged | needs-human
+  "blockerTip": "",                        // stacked only: blocker branch tip SHA, recorded before it merges
+  "stage": "review",   // blocked | spec | build | review | approve | pr-open | merged | needs-human | closed
   "round": 2,
   "reviews": { "security": "CHANGES", "ux": "PASS", "ui": "pending", "code": "PASS" },
   "rounds": [ { "n": 1, "reviews": { "security": "CHANGES", "ux": "PASS", "ui": "PASS", "code": "CHANGES" } } ],
@@ -194,8 +200,8 @@ but never yours to drive. Each job also carries `issueUrl` (and a PR URL) for li
      `gh auth refresh -s project`. Then
      `gh project create --owner <owner> --title "Factory" --format json --jq .number` (this prints the
      project number `<n>`), then
-     `gh project field-create <n> --owner <owner> --name Stage --data-type SINGLE_SELECT --single-select-options "blocked,spec,build,review,approve,pr-open,needs-human,merged"`
-     (the option names must be exactly those eight stages), then store the number with
+     `gh project field-create <n> --owner <owner> --name Stage --data-type SINGLE_SELECT --single-select-options "blocked,spec,build,review,approve,pr-open,needs-human,merged,closed"`
+     (the option names must be exactly those nine stages), then store the number with
      `gh variable set FACTORY_PROJECT_NUMBER --body <n>`. Tell the user to create a token with the
      `project` scope and add it with `gh secret set FACTORY_PROJECT_TOKEN`; the factory never asks
      for, reads or prints the token value. Until the secret exists the workflow exits 0 with a warning.
@@ -274,7 +280,7 @@ pipeline from Build. No epic, no dependencies. Print the issue as a link, `[#<is
 Repeat until nothing is runnable or in flight (`next` = at most one new job):
 
 1. **Sync.** Run `python3 ${CLAUDE_SKILL_DIR}/scripts/factory_team.py board --repo <owner/name> --out factory`
-   and treat the result as the board; local files hold only caches. Then, for each non-merged job
+   and treat the result as the board; local files hold only caches. Then, for each non-merged, non-closed job
    that is yours, `gh pr view` (state, checks, base) and read its blocked-by links from GitHub
    (the rebuild leaves `blockedBy` empty; you edit `blockedBy`, `reviews`, `rounds` and
    `decision` in `factory/board.json`, and `board` preserves them for jobs still on GitHub). A PR a human merged/closed → update the board.
@@ -284,8 +290,10 @@ Repeat until nothing is runnable or in flight (`next` = at most one new job):
    until its owner's clone runs. Run
    `git fetch origin` and `git -C <main checkout> pull --ff-only`. Never drive a job whose
    owner is someone else.
-2. **Promote.** For each `blocked` job apply the readiness table. Ready → check capacity
-   **first**: respect `max_parallel` (count jobs in spec/build/review/approve); no free slot →
+2. **Promote.** For each `blocked` job apply the readiness table (skip `closed` jobs: the issue was
+   closed without a merged PR, so the job is over; never claim or drive one). Ready → check capacity
+   **first**: respect `max_parallel` (count **your** jobs — `owner` = you — in
+   spec/build/review/approve; other developers' jobs never use your slots); no free slot →
    leave it queued and do not claim. Otherwise **claim** it, then create its workspace and
    start it.
 
@@ -296,7 +304,9 @@ Repeat until nothing is runnable or in flight (`next` = at most one new job):
    - `mine` → proceed.
    - `free` → `gh issue edit <N> --add-assignee @me --add-label in-progress`, then re-read the
      issue with `factory_team.py claim verify --repo <owner/name> --issue <N>` (it re-reads via
-     `gh issue view` and applies `decide_claim_winner`). `won` → keep the claim. `lost` → someone
+     `gh issue view` and the issue's events: the current assignee with the earliest `assigned` event
+     wins, so every racer computes the same winner; with no usable events or a tie it falls back
+     to `decide_claim_winner`, the first assignee). `won` → keep the claim. `lost` → someone
      else was first: remove your own assignee (`gh issue edit <N> --remove-assignee @me`; also
      `--remove-label in-progress` only if no assignee remains, since the winner relies on it)
      and skip.
@@ -306,7 +316,7 @@ Repeat until nothing is runnable or in flight (`next` = at most one new job):
    Workspace: `git worktree add .worktrees/<id> -b factory/<id> <base>` where `<base>` is
    `main`, or for a stacked job `factory/<blocker-id>` (set `base` on the board). The issue keeps
    the `in-progress` label from the claim; remove `ready`/`blocked`.
-3. **Drive every active job one step**, and **issue the Agent calls for all jobs that need one in
+3. **Drive every active job one step** (never a `merged` or `closed` one), and **issue the Agent calls for all jobs that need one in
    a single message** so independent tickets truly run in parallel. As each agent returns,
    advance only that job; others keep going. Each job's steps:
 
@@ -345,11 +355,15 @@ Repeat until nothing is runnable or in flight (`next` = at most one new job):
    - `ESCALATE` or anything else → **flag**, note = the approver's first reason.
 
    **Merge** (a `pr-open` job; re-evaluated on every scheduler pass):
+   - **Before** merging any blocker with `--delete-branch` (below), record its branch tip on the
+     entry of every job stacked on it: `blockerTip` = `git rev-parse origin/factory/<blocker-id>`
+     after `git fetch origin`, written to `factory/board.json` BEFORE the merge (afterwards the
+     branch is gone and the squash commit has a different SHA).
    - PR base ≠ `main` (stacked): wait until the base blocker is `merged`. Then **restack**: in the
-     job's worktree `git fetch origin && git rebase --onto origin/main factory/<blocker-id>`
-     (squash-merged base: use the blocker's pre-merge tip SHA recorded on the board as the
-     `--onto` upstream); `git push --force-with-lease`; `gh pr edit <pr> --base main`; set
-     `base: main`. Rebase conflict → `git rebase --abort`, **flag** "restack conflict". If the
+     job's worktree `git fetch origin`, then `git rebase --onto origin/main <blockerTip>` (the
+     blocker's pre-merge tip from the board is the upstream; the squash-merged blocker's own
+     commits are dropped); `git push --force-with-lease`; `gh pr edit <pr> --base main`; set
+     `base: main` and `blockerTip: ""`. No `blockerTip` recorded → **flag** "restack: blocker tip unknown". Rebase conflict → `git rebase --abort`, **flag** "restack conflict". If the
      restacked diff's `git patch-id` differs from before the rebase, send the job back to
      **Review** round N+1 (stage `review`); otherwise continue.
    - PR base is `main`: check `gh pr checks <pr>` and `gh pr view <pr> --json mergeable`.
@@ -370,7 +384,7 @@ Repeat until nothing is runnable or in flight (`next` = at most one new job):
 
 `/factory status`: run `python3 ${CLAUDE_SKILL_DIR}/scripts/factory_team.py status --repo <owner/name>`
 and print its table as is (every job from every developer, owner column included, issue and PR
-as links). Then name each stale claim (an `in-progress` issue with no recent activity, as the
+as links; a job whose issue was closed without a merged PR shows as `closed`). Then name each stale claim (an `in-progress` issue with no recent activity, as the
 table marks it) with its owner and link. It changes nothing on GitHub or locally.
 
 ### Flagging (`flag(job, reason)`)

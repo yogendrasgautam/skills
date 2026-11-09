@@ -15,7 +15,7 @@
   header { display: flex; align-items: baseline; gap: 12px; padding: 16px 24px; border-bottom: 1px solid var(--line); background: var(--panel); }
   header h1 { font-size: 16px; margin: 0; }
   header .meta { color: var(--muted); font-size: 12px; margin-left: auto; }
-  .board { display: grid; grid-template-columns: repeat(6, minmax(190px, 1fr)); gap: 12px; padding: 16px 24px; overflow-x: auto; }
+  .board { display: grid; grid-template-columns: repeat(9, minmax(190px, 1fr)); gap: 12px; padding: 16px 24px; overflow-x: auto; }
   .col { background: #eef0f3; border-radius: 10px; padding: 10px; min-height: 60vh; }
   .col.human { background: var(--human-bg); outline: 2px solid var(--human); }
   .col h2 { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 2px 4px 10px; display: flex; justify-content: space-between; }
@@ -76,6 +76,7 @@
 const STAGES = [
   ["blocked", "Blocked"], ["spec", "Spec"], ["build", "Build"], ["review", "Review"],
   ["approve", "Approve"], ["pr-open", "PR open"], ["merged", "Merged"], ["needs-human", "Needs human"],
+  ["closed", "Closed"],
 ];
 const REVIEWERS = ["security", "ux", "ui", "code"];
 let board = { jobs: [] }, openId = null, openFile = null, lastJson = "";
