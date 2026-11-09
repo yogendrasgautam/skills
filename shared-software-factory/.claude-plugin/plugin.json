@@ -1,0 +1,20 @@
+{
+  "name": "shared-software-factory",
+  "version": "0.1.0",
+  "description": "The team-shared variant of the software factory (/shared-software-factory:factory): a GitHub-backed board, ticket claims and a shared dashboard so several developers can run the grill, build, review and approve pipeline together.",
+  "author": {
+    "name": "Yogendra Gautam"
+  },
+  "keywords": [
+    "factory",
+    "agents",
+    "orchestration",
+    "code-review",
+    "tdd",
+    "dashboard",
+    "github",
+    "pull-requests",
+    "adr",
+    "team"
+  ]
+}

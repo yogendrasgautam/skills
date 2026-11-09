@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Software Factory</title>
+<style>
+  :root {
+    --bg: #f6f7f9; --panel: #fff; --ink: #1d2330; --muted: #6b7280; --line: #e5e7eb;
+    --pass: #16a34a; --pass-bg: #dcfce7; --chg: #dc2626; --chg-bg: #fee2e2;
+    --pend: #9ca3af; --pend-bg: #f3f4f6; --human: #d97706; --human-bg: #fef3c7; --accent: #4f46e5;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; background: var(--bg); color: var(--ink); }
+  header { display: flex; align-items: baseline; gap: 12px; padding: 16px 24px; border-bottom: 1px solid var(--line); background: var(--panel); }
+  header h1 { font-size: 16px; margin: 0; }
+  header .meta { color: var(--muted); font-size: 12px; margin-left: auto; }
+  .board { display: grid; grid-template-columns: repeat(9, minmax(190px, 1fr)); gap: 12px; padding: 16px 24px; overflow-x: auto; }
+  .col { background: #eef0f3; border-radius: 10px; padding: 10px; min-height: 60vh; }
+  .col.human { background: var(--human-bg); outline: 2px solid var(--human); }
+  .col h2 { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 2px 4px 10px; display: flex; justify-content: space-between; }
+  .col.human h2 { color: var(--human); }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 10px; margin-bottom: 8px; cursor: pointer; transition: box-shadow .15s; }
+  .card:hover, .card:focus { box-shadow: 0 2px 8px rgba(0,0,0,.08); outline: none; }
+  .card.active { border-color: var(--accent); }
+  .card.human { border-left: 4px solid var(--human); }
+  .card .id { font: 600 12px ui-monospace, monospace; }
+  .card .title { margin: 2px 0 6px; }
+  .card .sub { color: var(--muted); font-size: 11px; }
+  .card .note { color: var(--human); font-size: 12px; margin-top: 6px; }
+  .round { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; margin-top: 6px; }
+  .round .n { font-size: 10px; color: var(--muted); width: 20px; }
+  .chip { font-size: 10px; padding: 1px 6px; border-radius: 999px; background: var(--pend-bg); color: var(--pend); }
+  .chip.PASS { background: var(--pass-bg); color: var(--pass); }
+  .chip.CHANGES { background: var(--chg-bg); color: var(--chg); }
+  .badge.stale { background: var(--human-bg); color: var(--human); }
+  .card a { color: var(--accent); text-decoration: none; }
+  .card a:hover { text-decoration: underline; }
+  .badge { font-size: 10px; padding: 1px 6px; border-radius: 4px; font-weight: 600; }
+  .badge.APPROVE { background: var(--pass-bg); color: var(--pass); }
+  .badge.ESCALATE { background: var(--human-bg); color: var(--human); }
+  .empty { color: var(--muted); font-size: 12px; text-align: center; padding: 12px 0; }
+  aside { position: fixed; top: 0; right: 0; width: min(640px, 100vw); height: 100vh; background: var(--panel); border-left: 1px solid var(--line); box-shadow: -8px 0 24px rgba(0,0,0,.06); transform: translateX(100%); transition: transform .2s; display: flex; flex-direction: column; }
+  aside.open { transform: none; }
+  aside .top { display: flex; align-items: center; gap: 8px; padding: 12px 16px; border-bottom: 1px solid var(--line); }
+  aside .top b { font-family: ui-monospace, monospace; }
+  aside .top button { margin-left: auto; border: 0; background: none; font-size: 20px; cursor: pointer; color: var(--muted); }
+  .tabs { display: flex; flex-wrap: wrap; gap: 4px; padding: 8px 16px; border-bottom: 1px solid var(--line); }
+  .tabs button { border: 1px solid var(--line); background: #fff; border-radius: 6px; padding: 3px 8px; font-size: 12px; cursor: pointer; }
+  .tabs button.on { background: var(--ink); color: #fff; border-color: var(--ink); }
+  .doc { padding: 16px 20px; overflow: auto; flex: 1; }
+  .doc h1, .doc h2, .doc h3 { margin: 1em 0 .4em; line-height: 1.25; }
+  .doc h1 { font-size: 18px; } .doc h2 { font-size: 15px; } .doc h3 { font-size: 14px; }
+  .doc pre { background: #f6f8fa; padding: 10px; border-radius: 6px; overflow: auto; font-size: 12px; }
+  .doc code { font-family: ui-monospace, monospace; font-size: 12px; background: #f3f4f6; padding: 0 3px; border-radius: 3px; }
+  .doc pre code { background: none; padding: 0; }
+  .doc .v-PASS, .doc .v-APPROVE { color: var(--pass); font-weight: 700; }
+  .doc .v-CHANGES { color: var(--chg); font-weight: 700; }
+  .doc .v-ESCALATE { color: var(--human); font-weight: 700; }
+  .err { color: var(--chg); padding: 16px 24px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Software Factory</h1>
+  <span class="meta" id="meta">loading…</span>
+</header>
+<div id="err" class="err" hidden></div>
+<main class="board" id="board"></main>
+<aside id="panel" aria-label="Job files">
+  <div class="top"><b id="p-id"></b><span id="p-title"></span><button id="close" aria-label="Close">×</button></div>
+  <div class="tabs" id="tabs"></div>
+  <div class="doc" id="doc"></div>
+</aside>
+<script>
+const STAGES = [
+  ["blocked", "Blocked"], ["spec", "Spec"], ["build", "Build"], ["review", "Review"],
+  ["approve", "Approve"], ["pr-open", "PR open"], ["merged", "Merged"], ["needs-human", "Needs human"],
+  ["closed", "Closed"],
+];
+const REVIEWERS = ["security", "ux", "ui", "code"];
+let board = { jobs: [] }, openId = null, openFile = null, lastJson = "";
+
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+
+async function poll() {
+  try {
+    const r = await fetch("board.json?t=" + Date.now());
+    if (!r.ok) throw new Error("board.json " + r.status);
+    const txt = await r.text();
+    document.getElementById("err").hidden = true;
+    if (txt !== lastJson) { lastJson = txt; board = JSON.parse(txt); render(); if (openId) refreshPanel(); }
+    document.getElementById("meta").textContent = `${board.jobs.length} job(s) · updated ${new Date().toLocaleTimeString()}`;
+  } catch (e) {
+    const el = document.getElementById("err");
+    el.hidden = false;
+    el.textContent = "Can't read board.json — serve this folder: cd factory && python3 -m http.server 8000 (" + e.message + ")";
+  }
+}
+
+function chips(reviews) {
+  return REVIEWERS.map(k => `<span class="chip ${esc(reviews?.[k])}" title="${k}: ${esc(reviews?.[k] || "pending")}">${k}</span>`).join("");
+}
+
+// Only http(s) URLs become links; anything else renders as plain text.
+function link(url, text) {
+  return /^https?:\/\//i.test(url || "") ? `<a href="${esc(url)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">${esc(text)}</a>` : esc(text);
+}
+
+function links(j) {
+  const parts = [];
+  if (j.issue) parts.push(link(j.issueUrl, `#${j.issue}`));
+  if (j.pr) parts.push(link(j.prUrl, `PR #${j.pr}`));
+  return parts.join(" · ");
+}
+
+function card(j) {
+  const rounds = (j.rounds && j.rounds.length) ? j.rounds
+    : (j.reviews ? [{ n: j.round || 1, reviews: j.reviews }] : []);
+  const human = j.stage === "needs-human";
+  return `<div class="card ${human ? "human" : ""} ${openId === j.id ? "active" : ""}" tabindex="0" data-id="${esc(j.id)}">
+    <div class="id">${esc(j.id)} ${j.decision ? `<span class="badge ${esc(j.decision)}">${esc(j.decision)}</span>` : ""}${j.stale ? ` <span class="badge stale" title="claimed but no activity for days">stale</span>` : ""}</div>
+    <div class="title">${esc(j.title || "")}</div>
+    <div class="sub">${esc(j.branch || "")}${j.round ? ` · round ${j.round}` : ""}</div>
+    <div class="sub">${links(j)}${j.base && j.base !== "main" ? ` · stacked on ${esc(j.base)}` : ""}${(j.blockedBy || []).length ? ` · blocked by ${j.blockedBy.map(esc).join(", ")}` : ""}</div>
+    ${j.owner ? `<div class="sub">owner: ${esc(j.owner)}</div>` : ""}
+    ${rounds.map(r => `<div class="round"><span class="n">R${esc(r.n)}</span>${chips(r.reviews)}</div>`).join("")}
+    ${j.note ? `<div class="note">${esc(j.note)}</div>` : ""}
+  </div>`;
+}
+
+function render() {
+  document.getElementById("board").innerHTML = STAGES.map(([key, label]) => {
+    const jobs = board.jobs.filter(j => j.stage === key);
+    return `<section class="col ${key === "needs-human" ? "human" : ""}">
+      <h2><span>${label}</span><span>${jobs.length}</span></h2>
+      ${jobs.map(card).join("") || `<div class="empty">—</div>`}
+    </section>`;
+  }).join("");
+  document.querySelectorAll(".card").forEach(el => {
+    el.onclick = () => openPanel(el.dataset.id);
+    el.onkeydown = e => { if (e.key === "Enter") openPanel(el.dataset.id); };
+  });
+}
+
+function filesFor(j) {
+  const base = `jobs/${j.id}/`;
+  const f = [["spec", base + "spec.md"], ["build", base + "build.md"]];
+  const n = Math.max(j.round || 0, ...(j.rounds || []).map(r => r.n), 0);
+  for (let i = 1; i <= n; i++) {
+    f.push([`R${i} human`, `${base}round-${i}/human-note.md`]);
+    REVIEWERS.forEach(k => f.push([`R${i} ${k}`, `${base}round-${i}/review-${k}.md`]));
+  }
+  f.push(["decision", base + "decision.md"]);
+  return f;
+}
+
+async function openPanel(id) {
+  if (openId !== id) openFile = null;
+  openId = id; render(); refreshPanel();
+  document.getElementById("panel").classList.add("open");
+}
+
+async function refreshPanel() {
+  const j = board.jobs.find(x => x.id === openId);
+  if (!j) return;
+  document.getElementById("p-id").textContent = j.id;
+  document.getElementById("p-title").textContent = j.title || "";
+  const found = [];
+  await Promise.all(filesFor(j).map(async ([label, path], i) => {
+    try { const r = await fetch(path + "?t=" + Date.now()); if (r.ok) found[i] = [label, path, await r.text()]; } catch {}
+  }));
+  const files = found.filter(Boolean);
+  if (!files.length) { document.getElementById("tabs").innerHTML = ""; document.getElementById("doc").innerHTML = `<p class="empty">No files yet.</p>`; return; }
+  if (!openFile || !files.some(f => f[1] === openFile)) openFile = files[files.length - 1][1];
+  document.getElementById("tabs").innerHTML = files.map(([label, path]) =>
+    `<button class="${path === openFile ? "on" : ""}" data-path="${esc(path)}">${esc(label)}</button>`).join("");
+  document.querySelectorAll("#tabs button").forEach(b => b.onclick = () => { openFile = b.dataset.path; refreshPanel(); });
+  document.getElementById("doc").innerHTML = md(files.find(f => f[1] === openFile)[2]);
+}
+
+// Tiny markdown renderer: headings, code fences, lists, checkboxes, inline code/bold, verdict lines.
+function md(src) {
+  const inline = s => esc(s).replace(/`([^`]+)`/g, "<code>$1</code>").replace(/\*\*([^*]+)\*\*/g, "<b>$1</b>");
+  const out = []; let inCode = false, inList = false;
+  for (const line of src.split("\n")) {
+    if (line.startsWith("```")) { if (inList) { out.push("</ul>"); inList = false; } out.push(inCode ? "</code></pre>" : "<pre><code>"); inCode = !inCode; continue; }
+    if (inCode) { out.push(esc(line)); continue; }
+    const li = line.match(/^\s*[-*]\s+(?:\[( |x)\]\s+)?(.*)$/);
+    if (li) { if (!inList) { out.push("<ul>"); inList = true; } out.push(`<li>${li[1] ? (li[1] === "x" ? "☑ " : "☐ ") : ""}${inline(li[2])}</li>`); continue; }
+    if (inList) { out.push("</ul>"); inList = false; }
+    const h = line.match(/^(#{1,3})\s+(.*)$/);
+    const v = line.match(/^(?:VERDICT:\s*)?(PASS|CHANGES|APPROVE|ESCALATE)\b(.*)$/);
+    if (h) out.push(`<h${h[1].length}>${inline(h[2])}</h${h[1].length}>`);
+    else if (v) out.push(`<p class="v-${v[1]}">${esc(line)}</p>`);
+    else if (line.trim()) out.push(`<p>${inline(line)}</p>`);
+  }
+  if (inList) out.push("</ul>"); if (inCode) out.push("</code></pre>");
+  return out.join("\n");
+}
+
+document.getElementById("close").onclick = () => { openId = null; document.getElementById("panel").classList.remove("open"); render(); };
+document.addEventListener("keydown", e => { if (e.key === "Escape") document.getElementById("close").click(); });
+poll(); setInterval(poll, 2000);
+</script>
+</body>
+</html>

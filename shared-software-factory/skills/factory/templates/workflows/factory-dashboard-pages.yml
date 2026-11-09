@@ -1,0 +1,69 @@
+# Factory dashboard (GitHub Pages mode).
+#
+# Rebuilds factory/board.json + dashboard.html from GitHub issues, PRs and comments
+# and deploys them to GitHub Pages. Nothing is stored locally: the board is derived
+# from GitHub state on every run.
+#
+# Requirements:
+#   - Repo Settings -> Pages -> Source = "GitHub Actions".
+#   - Access restriction (who may view the dashboard) is configured in
+#     repo Settings -> Pages (private visibility needs GitHub Enterprise Cloud).
+#   - The helper is committed at .factory/factory_team.py (installed by the factory).
+#   - The dashboard is published twice, as dashboard.html and as index.html, so the
+#     site root is not a 404.
+# Schedule: issue, PR and comment events keep the dashboard fresh; the cron is only a
+# backstop, every 6 hours, so private repos on the Free plan (2,000 Actions minutes a
+# month) are not spent on idle polling.
+# Security: this workflow uses pull_request_target so it runs in the context of the
+# base repository. NEVER check out the PR head (github.event.pull_request.head.*) here:
+# every checkout pins ref to the default branch so only reviewed code from the default
+# branch (.factory/factory_team.py) is ever executed. The same ref is used for the
+# issues, issue_comment, schedule and workflow_dispatch runs.
+name: factory-dashboard
+
+on:
+  issues:
+  pull_request_target:
+    types: [opened, reopened, closed, synchronize, labeled, unlabeled]
+  issue_comment:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 */6 * * *"
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+  issues: read
+  pull-requests: read
+
+concurrency:
+  group: factory-dashboard-pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4.2.2
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+      - uses: actions/setup-python@v5.3.0
+        with:
+          python-version: "3.12"
+      - name: Build dashboard
+        env:
+          GH_TOKEN: ${{ github.token }}
+        # --me is explicit: GITHUB_TOKEN may not read /user (403), and the bot owns no jobs.
+        run: |
+          python3 .factory/factory_team.py dashboard --repo ${{ github.repository }} --out site --me 'github-actions[bot]'
+          cp site/dashboard.html site/index.html
+      - uses: actions/upload-pages-artifact@v3.0.1
+        with:
+          path: site
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4.0.5

@@ -34,6 +34,8 @@ jobs:
       # 3.9 it runs on locally.
       - name: unit tests
         run: python3 -m unittest discover -s tools -p 'test_*.py' -v
+      - name: shared-software-factory unit tests
+        run: python3 -m unittest discover -s shared-software-factory/tests -p 'test_*.py' -v
       - name: validate fragments
         run: python3 tools/marketplace.py lint
       # The catalog is generated, and only the regen job on main writes it. A PR that
