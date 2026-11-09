@@ -58,6 +58,44 @@ class SkillRulesTest(unittest.TestCase):
         self.assertIn("leaves `blockedBy`", self.text)
         self.assertIn("dependencies/blocked_by", self.text)
         self.assertIn("preserves them", self.text)
+    def section(self, title: str) -> str:
+        start = self.text.index(title)
+        nxt = self.text.find("\n### ", start + len(title))
+        return self.text[start:] if nxt == -1 else self.text[start:nxt]
+
+    def test_marker_comments_present(self):
+        for marker in ("<!-- factory:review round-N -->", "<!-- factory:build -->",
+                       "<!-- factory:decision -->", "<!-- factory:spec -->"):
+            self.assertIn(marker, self.text)
+
+    def test_posting_updates_existing_comment(self):
+        block = self.section("### Posting shared history")
+        self.assertIn("update the existing comment", block)
+        self.assertIn("-X PATCH", block)
+        self.assertIn("comments --paginate", block)
+
+    def test_rebuild_section(self):
+        block = self.section("### Rebuilding a job from GitHub")
+        for needle in ("ticket.md", "spec.md", "build.md", "decision.md", "round-N/review-",
+                       "git fetch origin", "git worktree add .worktrees/<id> -b factory/<id> origin/factory/<id>",
+                       "shared-software-factory:builder", "builder-<id>", "read build.md"):
+            self.assertIn(needle, block)
+
+    def test_approve_rework_cross_clone(self):
+        for title in ("### `approve <job-id>`", "### `rework <job-id> <note>`"):
+            block = self.section(title)
+            self.assertIn("needs-human", block)
+            self.assertIn("Rebuilding a job from GitHub", block)
+            self.assertIn("the PR is the target", block)
+        approve = self.section("### `approve <job-id>`")
+        self.assertIn("/factory approve 123", approve)
+        self.assertIn("issue number", approve)
+        self.assertIn("pr-open", approve)
+
+    def test_hard_rule_5_exempts_approve_rework(self):
+        rule = self.text[self.text.index("5. GitHub is the board"):self.text.index("## Files")]
+        self.assertIn("approve", rule)
+        self.assertIn("rework", rule)
 
 
 if __name__ == "__main__":
