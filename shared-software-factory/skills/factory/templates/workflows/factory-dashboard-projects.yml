@@ -1,0 +1,92 @@
+# Factory dashboard (GitHub Projects v2 mode).
+#
+# Rebuilds the board from GitHub state and moves each job's card to its stage column.
+#
+# Requirements:
+#   - The default GITHUB_TOKEN cannot write Projects v2. Create a token with the
+#     `project` scope (classic PAT, or fine-grained with Projects read/write) and
+#     store it as the repo secret FACTORY_PROJECT_TOKEN. When the secret is empty
+#     this job exits 0 with a warning instead of failing.
+#   - Create a Project (owned by the repo owner) with a single-select field named
+#     "Stage" whose options match the factory stages: blocked, spec, build, review,
+#     approve, pr-open, needs-human, merged.
+#   - Store the project number (the N in .../projects/N) as the repo variable
+#     FACTORY_PROJECT_NUMBER. Project id, Stage field id and option ids are looked
+#     up at run time:
+#         gh project view N --owner OWNER --format json              # .id
+#         gh project field-list N --owner OWNER --format json        # Stage .id, .options[].id
+#         gh project item-list N --owner OWNER --format json         # items[].id, .content.number
+#   - The helper is committed at .factory/factory_team.py (installed by the factory).
+name: factory-dashboard
+
+on:
+  issues:
+  pull_request:
+  issue_comment:
+  workflow_dispatch:
+  schedule:
+    - cron: "*/15 * * * *"
+
+permissions:
+  contents: read
+  issues: read
+  pull-requests: read
+
+concurrency:
+  group: factory-dashboard-projects
+  cancel-in-progress: true
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ secrets.FACTORY_PROJECT_TOKEN }}
+      PROJECT_NUMBER: ${{ vars.FACTORY_PROJECT_NUMBER }}
+      OWNER: ${{ github.repository_owner }}
+    steps:
+      - name: Check project token
+        id: gate
+        run: |
+          if [ -z "$GH_TOKEN" ] || [ -z "$PROJECT_NUMBER" ]; then
+            echo "::warning::FACTORY_PROJECT_TOKEN secret or FACTORY_PROJECT_NUMBER variable is not set; skipping Projects sync."
+            echo "run=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          fi
+      - uses: actions/checkout@v4.2.2
+        if: steps.gate.outputs.run == 'true'
+      - uses: actions/setup-python@v5.3.0
+        if: steps.gate.outputs.run == 'true'
+        with:
+          python-version: "3.12"
+      - name: Build board
+        if: steps.gate.outputs.run == 'true'
+        run: python3 .factory/factory_team.py board --repo ${{ github.repository }} --out factory
+      - name: Move cards by stage
+        if: steps.gate.outputs.run == 'true'
+        run: |
+          set -euo pipefail
+          project_id=$(gh project view "$PROJECT_NUMBER" --owner "$OWNER" --format json --jq .id)
+          fields=$(gh project field-list "$PROJECT_NUMBER" --owner "$OWNER" --format json)
+          field_id=$(jq -r '.fields[] | select(.name == "Stage") | .id' <<<"$fields")
+          if [ -z "$field_id" ]; then
+            echo "::warning::Project $PROJECT_NUMBER has no single-select field named Stage; skipping."
+            exit 0
+          fi
+          items=$(gh project item-list "$PROJECT_NUMBER" --owner "$OWNER" --format json --limit 500)
+          jq -c '.jobs[]' factory/board.json | while read -r job; do
+            number=$(jq -r '.issue' <<<"$job")
+            stage=$(jq -r '.stage' <<<"$job")
+            url=$(jq -r '.issueUrl' <<<"$job")
+            option_id=$(jq -r --arg s "$stage" '.fields[] | select(.name == "Stage") | .options[] | select(.name == $s) | .id' <<<"$fields")
+            if [ -z "$option_id" ]; then
+              echo "::warning::No Stage option named '$stage' (issue #$number)"
+              continue
+            fi
+            item_id=$(jq -r --argjson n "$number" '.items[] | select(.content.number == $n) | .id' <<<"$items" | head -n1)
+            if [ -z "$item_id" ]; then
+              item_id=$(gh project item-add "$PROJECT_NUMBER" --owner "$OWNER" --url "$url" --format json --jq .id)
+            fi
+            gh project item-edit --id "$item_id" --project-id "$project_id" \
+              --field-id "$field_id" --single-select-option-id "$option_id"
+          done

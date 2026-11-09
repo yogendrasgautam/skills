@@ -1,0 +1,53 @@
+# Factory dashboard (GitHub Pages mode).
+#
+# Rebuilds factory/board.json + dashboard.html from GitHub issues, PRs and comments
+# and deploys them to GitHub Pages. Nothing is stored locally: the board is derived
+# from GitHub state on every run.
+#
+# Requirements:
+#   - Repo Settings -> Pages -> Source = "GitHub Actions".
+#   - Access restriction (who may view the dashboard) is configured in
+#     repo Settings -> Pages (private visibility needs GitHub Enterprise Cloud).
+#   - The helper is committed at .factory/factory_team.py (installed by the factory).
+name: factory-dashboard
+
+on:
+  issues:
+  pull_request:
+  issue_comment:
+  workflow_dispatch:
+  schedule:
+    - cron: "*/15 * * * *"
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+  issues: read
+  pull-requests: read
+
+concurrency:
+  group: factory-dashboard-pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4.2.2
+      - uses: actions/setup-python@v5.3.0
+        with:
+          python-version: "3.12"
+      - name: Build dashboard
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 .factory/factory_team.py dashboard --repo ${{ github.repository }} --out site
+      - uses: actions/upload-pages-artifact@v3.0.1
+        with:
+          path: site
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4.0.5

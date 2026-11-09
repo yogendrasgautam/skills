@@ -250,6 +250,35 @@ def _cmd_dashboard(args, run):
     shutil.copyfile(template, os.path.join(args.out, "dashboard.html"))
 
 
+def detect_dashboard_mode(plan_name: Optional[str], private: bool) -> str:
+    """"pages" (Enterprise only), "projects" (free/pro/team) or "ask" (unknown plan).
+
+    `private` is accepted for the interface but never promotes "ask" to "pages":
+    Pages access control for private repos is an Enterprise feature, and an unknown
+    plan must be confirmed with the user.
+    """
+    plan = (plan_name or "").strip().lower()
+    if plan == "enterprise":
+        return "pages"
+    if plan in ("free", "pro", "team"):
+        return "projects"
+    return "ask"
+
+
+def _cmd_mode(args, run):
+    info = run(["gh", "api", "repos/" + args.repo, "--jq", ".owner.type,.private"]).split()
+    owner_type = info[0] if info else ""
+    private = len(info) > 1 and info[1] == "true"
+    owner = args.repo.split("/", 1)[0]
+    endpoint = "orgs/" + owner if owner_type == "Organization" else "user"
+    try:
+        plan = run(["gh", "api", endpoint, "--jq", ".plan.name"]).strip()
+        plan_name = plan if plan and plan != "null" else None
+    except subprocess.CalledProcessError:
+        plan_name = None
+    sys.stdout.write(detect_dashboard_mode(plan_name, private) + "\n")
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="factory_team.py")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -264,6 +293,9 @@ def build_parser() -> argparse.ArgumentParser:
         if name != "status":
             p.add_argument("--out", default="factory", help="output directory (default: factory)")
         p.set_defaults(handler=handler)
+    p = sub.add_parser("mode", help="print the dashboard mode: pages|projects|ask")
+    p.add_argument("--repo", required=True, help="OWNER/NAME")
+    p.set_defaults(handler=_cmd_mode)
     return parser
 
 

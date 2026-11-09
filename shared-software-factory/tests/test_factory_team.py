@@ -1,6 +1,7 @@
 import io
 import json
 import os
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -18,6 +19,7 @@ from factory_team import (  # noqa: E402
     claim_state,
     decide_claim_winner,
     derive_stage,
+    detect_dashboard_mode,
     fetch_state,
     job_id,
     main,
@@ -272,6 +274,52 @@ class CliTests(unittest.TestCase):
             self.assertEqual(main(["status", "--repo", "o/r", "--me", "me"]), 1)
         self.assertIn("gh", err.getvalue())
         self.assertEqual(len(err.getvalue().strip().splitlines()), 1)
+
+
+def fake_mode_gh(owner_type="Organization", private=True, plan="enterprise", fail_plan=False):
+    def run(args):
+        if args[:3] == ["gh", "api", "repos/o/r"]:
+            return "%s\n%s\n" % (owner_type, "true" if private else "false")
+        if args[:3] in (["gh", "api", "orgs/o"], ["gh", "api", "user"]):
+            if fail_plan:
+                raise subprocess.CalledProcessError(403, args, stderr="HTTP 403")
+            return plan + "\n"
+        raise AssertionError(args)
+    return run
+
+
+class DashboardModeTests(unittest.TestCase):
+    def tearDown(self):
+        factory_team.RUN = None
+
+    def test_enterprise_gives_pages(self):
+        self.assertEqual(detect_dashboard_mode("enterprise", True), "pages")
+        self.assertEqual(detect_dashboard_mode("Enterprise", False), "pages")
+
+    def test_free_pro_team_give_projects(self):
+        for plan in ("free", "pro", "team", "Team"):
+            self.assertEqual(detect_dashboard_mode(plan, True), "projects")
+
+    def test_unknown_gives_ask(self):
+        self.assertEqual(detect_dashboard_mode(None, True), "ask")
+        self.assertEqual(detect_dashboard_mode(None, False), "ask")
+        self.assertEqual(detect_dashboard_mode("weird", True), "ask")
+
+    def _mode(self, **kw):
+        factory_team.RUN = fake_mode_gh(**kw)
+        out = io.StringIO()
+        with redirect_stdout(out):
+            self.assertEqual(main(["mode", "--repo", "o/r"]), 0)
+        return out.getvalue()
+
+    def test_cli_mode_org_enterprise(self):
+        self.assertEqual(self._mode(), "pages\n")
+
+    def test_cli_mode_user_free(self):
+        self.assertEqual(self._mode(owner_type="User", plan="free"), "projects\n")
+
+    def test_403_from_org_lookup_gives_ask(self):
+        self.assertEqual(self._mode(fail_plan=True), "ask\n")
 
 
 if __name__ == "__main__":
