@@ -1,7 +1,7 @@
 ---
 name: factory
-description: Run the software factory — grill the user, write specs as GitHub issues with dependencies, build independent tickets in parallel, review, and merge only through PRs (flagged for a human when in doubt). Use for "/factory <feature>", "/factory plan <epic>", "/factory run", "/factory approve <id>", "/factory rework <id> <note>", "/factory setup".
-argument-hint: "<feature> | plan <epic> | run | next | approve <job-id> | rework <job-id> <note> | setup"
+description: Run the software factory — grill the user, write specs as GitHub issues with dependencies, build independent tickets in parallel, review, and merge only through PRs (flagged for a human when in doubt). Use for "/factory <feature>", "/factory plan <epic>", "/factory run", "/factory approve <id>", "/factory rework <id> <note>", "/factory status", "/factory setup".
+argument-hint: "<feature> | plan <epic> | run | next | status | approve <job-id> | rework <job-id> <note> | setup"
 disable-model-invocation: true
 ---
 
@@ -68,14 +68,16 @@ Agents ship in this plugin and are namespaced `shared-software-factory:<name>` �
 3. **Any doubt → flag for human review** (see "Flagging"). Doubt is a legitimate reason.
 4. **No unresolved question reaches a spec.** Grill first; agents return `OPEN QUESTIONS`
    rather than guess, and you grill those out.
-5. GitHub is the durable record (issues, dependencies, PRs, ADRs in `docs/adr/`). `factory/`
-   is local working state, excluded from git (`.git/info/exclude`), never committed.
+5. GitHub is the board and the durable record (issues, assignees, labels, dependencies, PRs,
+   ADRs in `docs/adr/`). `factory/` is a per-clone cache of working state, excluded from git
+   (`.git/info/exclude`), never committed, and never trusted over GitHub. Never drive a job
+   whose owner is another developer.
 
 ## Files
 
 ```
 factory/profile.md                    repo profile: stack, test cmd, conventions, skills_dir, max_parallel
-factory/board.json                    durable local state (you write it, the dashboard reads it)
+factory/board.json                    per-clone cache of the board (rebuilt from GitHub by factory_team.py; the dashboard reads it)
 factory/backlog.md                    local mirror of ready tickets (you write it)
 factory/plans/<slug>/decisions.md     grilling output (you)        — binding for planner/spec-writer
 factory/plans/<slug>/plan.md          planner: ticket breakdown
@@ -91,6 +93,14 @@ docs/adr/NNNN-slug.md, CONTEXT.md     in the repo, via a docs PR
 ## board.json
 
 Rewrite the whole file on every transition, then validate with `python3 -m json.tool factory/board.json >/dev/null`.
+
+The board is rebuilt from GitHub on every `run` (Sync) by `factory_team.py board`. That rebuild
+leaves `blockedBy`, `reviews`, `rounds` and `decision` empty, because they cannot be derived
+from GitHub inputs. It is **not** the complete board: read blocked-by links from GitHub
+(`gh api repos/<repo>/issues/<n>/dependencies/blocked_by`, falling back to the issue's
+`## Blocked by` body line), and keep review chips, rounds and decision in your own working notes
+or the local cache. Jobs of other developers appear with `owner` = their login; they are visible
+but never yours to drive. Each job also carries `issueUrl` (and a PR URL) for links.
 
 ```json
 { "jobs": [ {
@@ -193,27 +203,42 @@ Before any spec or ticket exists, run the `grill-with-docs` skill **yourself, in
      only record, say so in the epic, and read dependencies from board.json instead.
 5. Add one board entry per ticket with stage `blocked` (meaning "not started yet"; `blockedBy`
    may be empty, in which case it is simply queued and the scheduler promotes it). Append to `factory/backlog.md`: `- [ ] #<N> <title> {plan: <slug>#T<n>, after: #a,#b}`.
-6. Report: epic #, N tickets, which start immediately in parallel. Then run **`run`**.
+6. Report: epic as a link, N tickets (each as a `[#N](url)` link), which start immediately in parallel. Then run **`run`**.
 
 ### `<feature>` — one feature, no epic
 
-Run **Grill**, then treat it as a one-ticket plan: id = next 3-digit number (max in
-`factory/jobs/` + 1) + `-` + slug. Spawn `spec-writer` first (Spec step below), then create the
-GitHub issue with **spec.md as the body** (label `factory,in-progress`), then continue the
-pipeline from Build. No epic, no dependencies.
+Run **Grill**, then treat it as a one-ticket plan. The job id is `<issue>-<slug>`, so create the
+GitHub issue **first** (label `factory,in-progress`, assign `@me`, title = feature, body = the
+feature summary) and take its number as `<issue>`; there is no local counter. Spawn
+`spec-writer` (Spec step below), then replace the issue body with **spec.md** and continue the
+pipeline from Build. No epic, no dependencies. Print the issue as a link, `[#<issue>](<issueUrl>)`.
 
 ### `run` (alias `next`) — the scheduler
 
 Repeat until nothing is runnable or in flight (`next` = at most one new job):
 
-1. **Sync.** Read GitHub: for each non-merged job, `gh issue view`, `gh pr view` (state, checks,
-   base) and the issue's blocked-by links. A PR a human merged/closed → update the board. Run
-   `git fetch origin` and `git -C <main checkout> pull --ff-only`.
-2. **Promote.** For each `blocked` job apply the readiness table. Ready → create its workspace and
-   start it:
-   `git worktree add .worktrees/<id> -b factory/<id> <base>` where `<base>` is `main`, or for a
-   stacked job `factory/<blocker-id>` (set `base` on the board). Set the issue label `in-progress`,
-   remove `ready`/`blocked`. Respect `max_parallel` (count jobs in spec/build/review/approve).
+1. **Sync.** Run `python3 ${CLAUDE_SKILL_DIR}/scripts/factory_team.py board --repo <owner/name> --out factory`
+   and treat the result as the board; local files hold only caches. Then, for each non-merged job
+   that is yours, `gh pr view` (state, checks, base) and read its blocked-by links from GitHub
+   (the rebuild leaves `blockedBy` empty). A PR a human merged/closed → update the board. Run
+   `git fetch origin` and `git -C <main checkout> pull --ff-only`. Never drive a job whose
+   owner is someone else.
+2. **Promote.** For each `blocked` job apply the readiness table. Ready → **claim** it, then
+   create its workspace and start it.
+
+   **Claim.** Before promoting, run `claim_state` (from `factory_team.py`) on
+   `gh issue view <N> --json number,url,assignees,labels`:
+   - `other` → skip the job and print the holder with the link: `[#<N>](<url>) is held by @<holder>`.
+   - `mine` → proceed.
+   - `free` → `gh issue edit <N> --add-assignee @me --add-label in-progress`, then re-read with
+     `gh issue view <N> --json number,url,assignees,labels` and keep the claim only if
+     `decide_claim_winner` is true (you are the first assignee). Otherwise you lost the race:
+     remove your own assignee and label (`gh issue edit <N> --remove-assignee @me`; drop
+     `in-progress` only if no assignee remains, since the winner relies on it) and skip.
+
+   Workspace: `git worktree add .worktrees/<id> -b factory/<id> <base>` where `<base>` is
+   `main`, or for a stacked job `factory/<blocker-id>` (set `base` on the board). The issue keeps
+   the `in-progress` label from the claim; remove `ready`/`blocked`. Respect `max_parallel` (count jobs in spec/build/review/approve).
 3. **Drive every active job one step**, and **issue the Agent calls for all jobs that need one in
    a single message** so independent tickets truly run in parallel. As each agent returns,
    advance only that job; others keep going. Each job's steps:
@@ -260,22 +285,32 @@ Repeat until nothing is runnable or in flight (`next` = at most one new job):
      All green → `gh pr merge <pr> --squash --delete-branch`. Refused → **flag**.
    - Merged: stage `merged`; `git worktree remove .worktrees/<id>`; ensure the issue is closed
      (`gh issue close <N> --comment "merged in #<pr>"` if GitHub didn't auto-close it); `git -C <main> pull
-     --ff-only`; tick the ticket in the epic's task list (`gh issue edit <epic> --body-file …`). If `stack: undecided` was resolved by this job, re-run setup.
+     --ff-only`; tick the ticket in the epic's task list: re-read the epic body right before
+     `gh issue edit <epic> --body-file …` (another developer may have ticked theirs), and if it
+     changed since you read it, re-apply your tick to the fresh body and retry once. If `stack: undecided` was resolved by this job, re-run setup.
 
 4. Loop back to step 1 whenever any job changed state (a merge can ready new dependents).
-5. Finish by reporting a table: id · issue · PR · stage · note. Name every flagged PR with its
-   reason, and what is still waiting on whom.
+5. Finish by reporting a table: id · issue · PR · stage · note. The issue and PR cells are
+   markdown links (`[#42](<issueUrl>)`, `[#57](<PR url>)`). Name every flagged PR with its
+   reason (as a link), and what is still waiting on whom.
+
+### `status` — read-only team view
+
+`/factory status`: run `python3 ${CLAUDE_SKILL_DIR}/scripts/factory_team.py status --repo <owner/name>`
+and print its table as is (every job from every developer, owner column included, issue and PR
+as links). Then name each stale claim (an `in-progress` issue with no recent activity, as the
+table marks it) with its owner and link. It changes nothing on GitHub or locally.
 
 ### Flagging (`flag(job, reason)`)
 
 Never merge. Set stage `needs-human`, note = reason; label the PR and issue `needs-human-review`;
-post one PR comment with the reason, the "Notes for the human" from decision.md if any, and the
+post one PR comment with the reason, a link to the PR, the "Notes for the human" from decision.md if any, and the
 exact commands to continue (`/factory approve <id>` or `/factory rework <id> "<note>"`). Leave
 the PR **open**. Jobs stacked on or blocked by this one keep waiting (the readiness table).
 
 ### `approve <job-id>`
 
-Job must be `needs-human` (or `approve`/`pr-open`). First `gh pr view` — if the human already
+Job must be `needs-human` (or `approve`/`pr-open`) and yours (owner is you). First `gh pr view` — if the human already
 merged it on GitHub, just sync the board. Otherwise append `\n---\nHUMAN APPROVE <date>` to
 decision.md, set decision `APPROVE`, remove `needs-human-review`, add `factory-approved`, set
 stage `pr-open`, and run **Merge** (same gates: base `main`, checks green; a human approval
@@ -301,3 +336,4 @@ overrides the approver's ESCALATE, not a failing CI). Then run `run` to release 
 - Keep GitHub current: labels follow the stage, the PR/issue links are on the board, one comment
   per event (spec posted, PR flagged, merged) — not per step.
 - Keep chatter minimal: one line to the user per stage transition, except during grilling.
+- Whenever you name a job, ticket, epic or PR to the user, give it as a markdown link.
