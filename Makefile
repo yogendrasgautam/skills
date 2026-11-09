@@ -30,7 +30,7 @@ marketplace-lint: ## Validate every marketplace-entry.json fragment
 marketplace-check: ## Fail if marketplace.json is not already up to date (main only)
 	$(PYTHON) tools/marketplace.py apply --check
 
-test: ## Run the marketplace tooling's unit tests
+test: ## Run the marketplace tooling's and shared-software-factory's unit tests
 	$(PYTHON) -m unittest discover -s tools -p 'test_*.py'
 	$(PYTHON) -m unittest discover -s shared-software-factory/tests -p 'test_*.py'
 

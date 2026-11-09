@@ -1,6 +1,6 @@
 ---
 name: factory
-description: Run the software factory — grill the user, write specs as GitHub issues with dependencies, build independent tickets in parallel, review, and merge only through PRs (flagged for a human when in doubt). Use for "/factory <feature>", "/factory plan <epic>", "/factory run", "/factory approve <id>", "/factory rework <id> <note>", "/factory status", "/factory setup", "/shared-software-factory:factory setup refresh".
+description: Run the shared software factory (team edition) — grill the user, write specs as GitHub issues with dependencies, build independent tickets in parallel, review, and merge only through PRs (flagged for a human when in doubt). Use for "/factory <feature>", "/factory plan <epic>", "/factory run", "/factory approve <id>", "/factory rework <id> <note>", "/factory status", "/factory setup", "/shared-software-factory:factory setup refresh".
 argument-hint: "<feature> | plan <epic> | run | next | status | approve <job-id> | rework <job-id> <note> | setup | setup refresh"
 disable-model-invocation: true
 ---
@@ -136,7 +136,8 @@ but never yours to drive. Each job also carries `issueUrl` (and a PR URL) for li
    push the factory ever does. Otherwise ensure branch `main` exists and the main checkout is
    clean outside `factory/`; other dirt → ask the user to commit/stash first.
 2. **Detect the case.** Run `git fetch origin`, `git cat-file -e origin/main:.factory/profile.md`
-   (exit 0 = exists) and `gh pr list --head factory/setup --state open --json url`.
+   (exit 0 = exists) and both `gh pr list --head factory/setup --state open --json url` and
+   `gh pr list --head factory/setup-refresh --state open --json url`.
    - **(a) First setup**: `.factory/profile.md` does not exist on `origin/main` and the open-PR list is
      empty → full flow: steps 3 to 8.
    - **(b) Join** (second developer, new clone): `.factory/profile.md` exists on `origin/main` →
@@ -145,9 +146,12 @@ but never yours to drive. Each job also carries `issueUrl` (and a PR URL) for li
      labels), write the local `factory/profile.md` by copying `.factory/profile.md` from
      `origin/main` (`git show origin/main:.factory/profile.md`; `skills_dir` is never stored),
      run `factory_team.py board` (last bullet of step 3), check the skills dir (step 7), and stop.
-   - **(c) Refresh**: the user ran `/shared-software-factory:factory setup refresh`. Re-copy
+   - **(c) Refresh**: the user ran `/shared-software-factory:factory setup refresh`. Do not re-ask the
+     mode: detect it from the existing workflow, `git show origin/main:.github/workflows/factory-dashboard.yml`
+     (contains `deploy-pages` -> `pages`; contains `FACTORY_PROJECT_TOKEN` -> `projects`; neither -> stop
+     and tell the user the workflow is unrecognised). Also run the local cache (step 3). Re-copy
      `.factory/factory_team.py` (from `${CLAUDE_SKILL_DIR}/scripts/factory_team.py`) and the
-     matching workflow (step 5 source and target) from the plugin ONLY if they differ from the
+     matching workflow (step 5 source for the detected mode, and target) from the plugin ONLY if they differ from the
      versions on `origin/main` (`git diff --no-index` or `git show origin/main:<path>` compared with
      the plugin copy). If they differ, ship them as a new pull request from a fresh branch
      `factory/setup-refresh` (create it with `git worktree add .worktrees/setup-refresh -b
@@ -350,7 +354,7 @@ Repeat until nothing is runnable or in flight (`next` = at most one new job):
      (`gh issue close <N> --comment "merged in #<pr>"` if GitHub didn't auto-close it); `git -C <main> pull
      --ff-only`; tick the ticket in the epic's task list: re-read the epic body right before
      `gh issue edit <epic> --body-file …` (another developer may have ticked theirs), and if it
-     changed since you read it, re-apply your tick to the fresh body and retry once. If `stack: undecided` was resolved by this job, re-run setup.
+     changed since you read it, re-apply your tick to the fresh body and retry once. If `stack: undecided` was resolved by this job, tell the user to update `.factory/profile.md` through a normal pull request (setup join never regenerates the profile).
 
 4. Loop back to step 1 whenever any job changed state (a merge can ready new dependents).
 5. Finish by reporting a table: id · issue · PR · stage · note. The issue and PR cells are

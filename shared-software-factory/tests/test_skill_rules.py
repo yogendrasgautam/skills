@@ -189,6 +189,26 @@ class SkillRulesTest(unittest.TestCase):
         self.assertNotIn("re-copies the helper", block)
         self.assertNotIn("a new PR updates `.factory/profile.md`", block)
 
+    def test_merge_step_undecided_stack_edits_profile_by_pr(self):
+        self.assertNotIn("re-run setup", self.text)
+        i = self.text.index("`stack: undecided` was resolved by this job")
+        tail = self.text[i:i + 300]
+        self.assertIn(".factory/profile.md", tail)
+        self.assertIn("pull request", tail)
+
+    def test_setup_refresh_detects_mode_and_refreshes_cache(self):
+        block = self.setup_block()
+        i = block.index("**(c) Refresh**")
+        case = block[i:block.index("If the open-PR list is non-empty")]
+        self.assertIn("origin/main:.github/workflows/factory-dashboard.yml", case)
+        self.assertIn("deploy-pages", case)
+        self.assertIn("FACTORY_PROJECT_TOKEN", case)
+        self.assertIn("step 3", case)
+
+    def test_open_pr_guard_checks_refresh_branch(self):
+        block = self.setup_block()
+        self.assertIn("gh pr list --head factory/setup-refresh --state open --json url", block)
+
     def test_setup_refresh_in_frontmatter(self):
         head = self.text.split("\n---\n", 1)[0]
         self.assertIn("setup refresh", head)
