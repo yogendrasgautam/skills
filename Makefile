@@ -32,6 +32,7 @@ marketplace-check: ## Fail if marketplace.json is not already up to date (main o
 
 test: ## Run the marketplace tooling's unit tests
 	$(PYTHON) -m unittest discover -s tools -p 'test_*.py'
+	$(PYTHON) -m unittest discover -s shared-software-factory/tests -p 'test_*.py'
 
 check: test marketplace-lint ## Everything CI checks on a PR, in CI's order
 
