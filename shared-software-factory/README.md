@@ -55,8 +55,8 @@ grill (you) ─► ADRs + decisions ─► planner ─► GitHub epic + ticket i
 /shared-software-factory:factory plan "Todo app with tags"  # grill → ADRs → epic + ticket issues, then run
 /shared-software-factory:factory run                        # run every ready ticket in parallel (next = one)
 /shared-software-factory:factory "Add rate limiting"        # grill, then run one feature directly
-/shared-software-factory:factory approve 003-rate-limiting
-/shared-software-factory:factory rework 003-rate-limiting "use a token bucket"
+/shared-software-factory:factory approve 42-rate-limiting
+/shared-software-factory:factory rework 42-rate-limiting "use a token bucket"
 ```
 Dashboard: `cd factory && python3 -m http.server 8000` → http://localhost:8000/dashboard.html
 
@@ -89,8 +89,11 @@ there is no shared local state.
 
   | Plan | Mode | What you get |
   |---|---|---|
-  | Enterprise Cloud | Pages | a dashboard site restricted to repo members |
+  | Enterprise Cloud | Pages | a dashboard site; restricting it to repo members is a manual, Enterprise-only setting (Settings -> Pages) |
   | Free / Pro / Team | Projects | a Projects v2 board kept in sync by a workflow |
+
+  When the plan cannot be detected the helper answers `ask`; setup resolves that by asking
+  you which plan the repo is on, so a workflow is never installed in mode `ask`.
 
   Projects mode needs a token: the default `GITHUB_TOKEN` cannot write Projects v2. Create a token
   with the `project` scope, add it with `gh secret set FACTORY_PROJECT_TOKEN`, and set the variable
@@ -100,3 +103,23 @@ there is no shared local state.
   *Join*: later developers run `setup` after that PR merges; it only builds their local cache.
   *Refresh*: `setup refresh` re-ships the helper and workflow through a PR after a plugin upgrade.
 - **Install:** `/plugin install shared-software-factory@engineering-skills`
+
+## Not yet verified live
+
+The helper and the orchestrator rules are unit-tested against a fake `gh`, but these parts have
+not yet been exercised against real GitHub:
+
+- the `gh api ... --paginate --jq` comment lookups (marker dedupe, rebuilding a job) and the
+  issue-events lookup behind `claim verify`;
+- `gh project field-create` (the `Stage` options) and `gh project item-list` returning
+  `content.url` for each card;
+- the native dependencies (`issues/<n>/dependencies/blocked_by`) and sub-issues
+  (`issues/<epic>/sub_issues`) endpoints;
+- the Pages deploy and its access setting (restricting the site to repo members is manual and
+  Enterprise-only);
+- the `.claude/settings.json` key names (`extraKnownMarketplaces`, `enabledPlugins`);
+- the claim-race ordering (earliest `assigned` event wins) under a real simultaneous claim.
+
+Before relying on the factory for a team, a dry run is recommended on a throwaway private repo
+with two accounts: setup (first and join), a claim race, a stacked pair of tickets, a flagged PR approved
+from the other clone, and one dashboard workflow run.

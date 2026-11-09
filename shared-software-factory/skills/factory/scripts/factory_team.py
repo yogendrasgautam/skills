@@ -474,13 +474,33 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+class GhNotFound(Exception):
+    """The `gh` executable itself could not be started."""
+
+
+def _guard_gh(run: Callable) -> Callable:
+    """Wrap a runner so only a failure to launch `gh` reads as "gh not found"."""
+    def guarded(args):
+        try:
+            return run(args)
+        except FileNotFoundError as e:
+            raise GhNotFound() from e
+    return guarded
+
+
 def main(argv=None) -> int:
     args = build_parser().parse_args(argv)
-    run = RUN or default_run
+    run = _guard_gh(RUN or default_run)
     try:
         args.handler(args, run)
-    except FileNotFoundError:
+    except GhNotFound:
         sys.stderr.write("error: the gh CLI was not found; install it and run `gh auth login`\n")
+        return 1
+    except json.JSONDecodeError as e:
+        sys.stderr.write("error: gh returned invalid JSON (%s)\n" % e.msg)
+        return 1
+    except OSError as e:
+        sys.stderr.write("error: %s: %s\n" % (e.strerror or e, e.filename or ""))
         return 1
     except subprocess.CalledProcessError as e:
         detail = ((e.stderr or "").strip().splitlines() or ["gh failed (run `gh auth login`?)"])[0]

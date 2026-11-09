@@ -348,6 +348,69 @@ class SkillRulesTest(unittest.TestCase):
         self.assertIn("cp site/dashboard.html site/index.html", pages)
         self.assertIn("index.html", pages.split("name: factory-dashboard")[0])
 
+    # ---- I9 capacity is per developer ----
+    def test_capacity_counts_only_own_jobs(self):
+        promote = self.text[self.text.index("2. **Promote.**"):self.text.index("**Claim.**")]
+        self.assertIn("count **your** jobs — `owner` = you — in\n   spec/build/review/approve", promote)
+
+    # ---- I10 ADR number / docs branch collisions ----
+    def test_grill_avoids_adr_and_branch_collisions(self):
+        grill = self.section("### Grill (used by `plan` and `<feature>`)")
+        self.assertIn("next free `NNNN`", grill)
+        self.assertIn("origin/main", grill)
+        self.assertIn("gh pr list --state open --json files", grill)
+        self.assertIn("git ls-remote --heads origin factory/docs-<slug>", grill)
+        self.assertIn("-2", grill)
+        self.assertIn("plan slugs are local cache names", grill)
+
+    # ---- I11 namespaced spawns ----
+    def test_every_spawn_uses_namespaced_agent(self):
+        import re
+        bare = re.compile(r"(?<!shared-software-factory:)\b(planner|spec-writer|builder|approver|"
+                          r"reviewer-(?:security|ux|ui|code))`")
+        spawn_lines = [l for l in self.text.splitlines() if re.search(r"[Ss]pawn", l)]
+        self.assertTrue(spawn_lines)
+        for line in spawn_lines:
+            for m in re.finditer(r"`([^`]+)`", line):
+                token = m.group(1)
+                self.assertFalse(bare.fullmatch(token + "`"), line)
+        for name in ("planner", "spec-writer", "builder", "approver", "reviewer-security",
+                     "reviewer-ux", "reviewer-ui", "reviewer-code"):
+            self.assertIn("`shared-software-factory:%s`" % name, self.text, name)
+
+    # ---- I12 README honesty ----
+    def test_readmes_list_unverified_parts(self):
+        root = os.path.join(os.path.dirname(SKILL), "..", "..")
+        for path in (os.path.join(root, "README.md"), os.path.join(TEMPLATES, "README.md")):
+            with open(path, encoding="utf-8") as f:
+                text = f.read()
+            self.assertIn("## Not yet verified live", text, path)
+            block = text[text.index("## Not yet verified live"):]
+            for needle in ("--jq", "--paginate", "field-create", "item-list", "content.url",
+                           "dependencies", "sub-issues", "Pages", ".claude/settings.json",
+                           "claim", "throwaway private repo", "two accounts"):
+                self.assertIn(needle, block, (path, needle))
+            self.assertIn("Enterprise", text)
+            self.assertIn("manual", text)
+            self.assertIn("`ask`", text)
+
+    # ---- minors ----
+    def test_board_fields_written_by_orchestrator(self):
+        rebuild = self.section("### Rebuilding a job from GitHub")
+        self.assertNotIn("come from the files just created", rebuild)
+        self.assertIn("does not read them from files", rebuild)
+        self.assertIn("(keeping the fields `board` preserves)", self.section("## board.json"))
+
+    def test_marker_lookups_strip_cr(self):
+        for title in ("### Posting shared history", "### Rebuilding a job from GitHub"):
+            for line in self.section(title).splitlines():
+                if "startswith(" in line and "--jq" in line and "headRefName" not in line:
+                    self.assertIn('.body | gsub("\\r";"") | startswith(', line)
+        self.assertIn("LF line endings", self.section("### Posting shared history"))
+
+    def test_h1_names_the_shared_factory(self):
+        self.assertIn("\n# Shared Software Factory — orchestrator\n", self.text)
+
     def test_agents_do_not_read_skills_dir_from_profile(self):
         agents = os.path.join(os.path.dirname(SKILL), "..", "..", "agents")
         names = [n for n in os.listdir(agents) if n.endswith(".md")]

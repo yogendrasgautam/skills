@@ -429,6 +429,30 @@ class CliTests(unittest.TestCase):
         self.assertEqual(len(err.getvalue().strip().splitlines()), 1)
         self.assertIn("403", err.getvalue())
 
+    def test_missing_template_is_not_reported_as_missing_gh(self):
+        from unittest import mock
+        factory_team.RUN = fake_gh([])
+        err = io.StringIO()
+        missing = FileNotFoundError(2, "No such file or directory", "templates/dashboard.html")
+        with tempfile.TemporaryDirectory() as d, redirect_stderr(err), \
+                mock.patch.object(factory_team.shutil, "copyfile", side_effect=missing):
+            self.assertEqual(main(["dashboard", "--repo", "o/r", "--out", d, "--me", "x"]), 1)
+        self.assertNotIn("gh CLI was not found", err.getvalue())
+        self.assertIn("dashboard.html", err.getvalue())
+        self.assertEqual(len(err.getvalue().strip().splitlines()), 1)
+
+    def test_invalid_json_from_gh_is_one_line_error(self):
+        def run(args):
+            if args[:3] == ["gh", "issue", "list"]:
+                return "<html>rate limited</html>"
+            raise AssertionError(args)
+        factory_team.RUN = run
+        err = io.StringIO()
+        with redirect_stderr(err):
+            self.assertEqual(main(["status", "--repo", "o/r", "--me", "me"]), 1)
+        self.assertIn("invalid JSON", err.getvalue())
+        self.assertEqual(len(err.getvalue().strip().splitlines()), 1)
+
     def test_cli_exits_1_when_gh_missing(self):
         def boom(args):
             raise FileNotFoundError("gh")
