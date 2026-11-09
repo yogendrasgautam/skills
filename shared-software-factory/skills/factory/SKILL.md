@@ -1,7 +1,7 @@
 ---
 name: factory
-description: Run the software factory — grill the user, write specs as GitHub issues with dependencies, build independent tickets in parallel, review, and merge only through PRs (flagged for a human when in doubt). Use for "/factory <feature>", "/factory plan <epic>", "/factory run", "/factory approve <id>", "/factory rework <id> <note>", "/factory status", "/factory setup".
-argument-hint: "<feature> | plan <epic> | run | next | status | approve <job-id> | rework <job-id> <note> | setup"
+description: Run the software factory — grill the user, write specs as GitHub issues with dependencies, build independent tickets in parallel, review, and merge only through PRs (flagged for a human when in doubt). Use for "/factory <feature>", "/factory plan <epic>", "/factory run", "/factory approve <id>", "/factory rework <id> <note>", "/factory status", "/factory setup", "/shared-software-factory:factory setup refresh".
+argument-hint: "<feature> | plan <epic> | run | next | status | approve <job-id> | rework <job-id> <note> | setup | setup refresh"
 disable-model-invocation: true
 ---
 
@@ -127,19 +127,35 @@ but never yours to drive. Each job also carries `issueUrl` (and a PR URL) for li
 
 ### `setup` (also run automatically when `factory/profile.md` is missing)
 
+`/factory setup` has three cases; decide which one first (step 2), then follow only that case.
+
 1. **GitHub is required.** Run `gh auth status` and `gh repo view --json nameWithOwner,defaultBranchRef`.
    No `gh`, not logged in, or no GitHub remote → stop and tell the user exactly what to fix.
    Git: if not a repo, `git init -b main`. If the repo has **zero commits**, make the bootstrap
    commit and (after the user supplies/creates the GitHub remote) push `main` — the only direct
    push the factory ever does. Otherwise ensure branch `main` exists and the main checkout is
    clean outside `factory/`; other dirt → ask the user to commit/stash first.
-2. **Second developer.** Run `git fetch origin`, then `git cat-file -e origin/main:.factory/profile.md`.
-   If it exists (or the `factory/setup` pull request is already merged), the repo is already set
-   up: setup must NOT regenerate or overwrite `.factory/profile.md`, the workflow, the helper or
-   `.claude/settings.json`. Do only step 3 (local cache), then write the local
-   `factory/profile.md` from `.factory/profile.md` (copy it as is; `skills_dir` is never stored),
-   check the skills dir (step 6), and stop. Everything below is for the first setup of a repo
-   (or a re-run after a plugin update, which only re-copies the helper, see step 5).
+2. **Detect the case.** Run `git fetch origin`, `git cat-file -e origin/main:.factory/profile.md`
+   (exit 0 = exists) and `gh pr list --head factory/setup --state open --json url`.
+   - **(a) First setup**: `.factory/profile.md` does not exist on `origin/main` and the open-PR list is
+     empty → full flow: steps 3 to 8.
+   - **(b) Join** (second developer, new clone): `.factory/profile.md` exists on `origin/main` →
+     NEVER regenerate or overwrite it, the shipped helper, the workflow or `.claude/settings.json`.
+     Do only the local cache: step 3 (the `factory/` dirs, the `.git/info/exclude` entries, the
+     labels), write the local `factory/profile.md` by copying `.factory/profile.md` from
+     `origin/main` (`git show origin/main:.factory/profile.md`; `skills_dir` is never stored),
+     run `factory_team.py board` (last bullet of step 3), check the skills dir (step 7), and stop.
+   - **(c) Refresh**: the user ran `/shared-software-factory:factory setup refresh`. Re-copy
+     `.factory/factory_team.py` (from `${CLAUDE_SKILL_DIR}/scripts/factory_team.py`) and the
+     matching workflow (step 5 source and target) from the plugin ONLY if they differ from the
+     versions on `origin/main` (`git diff --no-index` or `git show origin/main:<path>` compared with
+     the plugin copy). If they differ, ship them as a new pull request from a fresh branch
+     `factory/setup-refresh` (create it with `git worktree add .worktrees/setup-refresh -b
+     factory/setup-refresh main`; same flagging as step 8). `.factory/profile.md` is never
+     regenerated: if the stack changed, tell the user to edit it by hand through a normal PR.
+     Nothing differs → say "already current" and stop.
+   - If the open-PR list is non-empty (any case) → another setup is in flight: stop and tell the
+     developer to wait for that PR (print the url as a link) to merge, then run setup again.
 3. Local cache (skip files that already exist — never overwrite project state):
    - copy `${CLAUDE_PLUGIN_ROOT}/skills/factory/templates/{dashboard.html,board.json,backlog.md,README.md}`
      into `factory/`, and `mkdir -p factory/jobs factory/plans`;
@@ -148,48 +164,53 @@ but never yours to drive. Each job also carries `issueUrl` (and a PR URL) for li
      `ready`, `blocked`, `in-progress`, `factory-approved`, `needs-human-review`;
    - `dashboard.html` is refreshed from the template on every setup (it holds no state);
    - build the board: `python3 ${CLAUDE_SKILL_DIR}/scripts/factory_team.py board --repo <owner/name> --out factory`.
-4. **Dashboard mode.** Run `python3 ${CLAUDE_SKILL_DIR}/scripts/factory_team.py mode --repo <owner/name>`;
+4. **Profile** (first setup only). Inspect the repo (manifest files, test dirs, lint configs,
+   README/CONTRIBUTING/CLAUDE.md, CONTEXT.md, docs/adr), fill in
+   `${CLAUDE_PLUGIN_ROOT}/skills/factory/templates/profile.shared.md` (fields: repo, stack, install,
+   test, lint, has_ui, max_parallel, conventions — no `skills_dir`, no absolute paths). Create the
+   setup worktree `git worktree add .worktrees/setup -b factory/setup main`, write the result to
+   `.factory/profile.md` there (staged for the PR in step 8), and copy it to the local
+   `factory/profile.md`. Empty repo → `stack: undecided`; the grilling picks the stack and the
+   first ticket scaffolds it. Later changes to the stack go into `.factory/profile.md` by hand via a
+   normal PR, not by re-running setup.
+5. **Dashboard mode** (first setup only). Run `python3 ${CLAUDE_SKILL_DIR}/scripts/factory_team.py mode --repo <owner/name>`;
    it prints `pages`, `projects` or `ask`. On `ask`, use AskUserQuestion: "Which GitHub plan is
    this repo on?" with options Enterprise Cloud / Team / Free or Pro. Enterprise Cloud → `pages`;
    Team and Free or Pro → `projects`. A private repo on Free, Pro or Team never gets pages
    (Pages access control needs Enterprise Cloud), so say so and use `projects`.
+   Copy the matching workflow from
+   `${CLAUDE_PLUGIN_ROOT}/skills/factory/templates/workflows/factory-dashboard-<mode>.yml` to
+   `.github/workflows/factory-dashboard.yml` in the setup worktree (`pages` or `projects`, never both),
+   and copy `${CLAUDE_SKILL_DIR}/scripts/factory_team.py` to `.factory/factory_team.py` there.
    - `pages`: tell the user to enable Pages in Settings -> Pages with source "GitHub Actions" and
      to set access to private / repo members (Enterprise Cloud only). That setting is not
      scriptable reliably, so the user does it by hand.
    - `projects`: create the Project and its `Stage` field (the owner is the repo owner; verify
-     with `gh project <cmd> --help` if a command errors):
-     `gh project create --owner <owner> --title "Factory"` (note the project number `<n>` it prints), then
+     with `gh project <cmd> --help` if a command errors). The `project` token scope is needed:
+     `gh auth refresh -s project`. Then
+     `gh project create --owner <owner> --title "Factory" --format json --jq .number` (this prints the
+     project number `<n>`), then
      `gh project field-create <n> --owner <owner> --name Stage --data-type SINGLE_SELECT --single-select-options "blocked,spec,build,review,approve,pr-open,needs-human,merged"`
      (the option names must be exactly those eight stages), then store the number with
      `gh variable set FACTORY_PROJECT_NUMBER --body <n>`. Tell the user to create a token with the
      `project` scope and add it with `gh secret set FACTORY_PROJECT_TOKEN`; the factory never asks
      for, reads or prints the token value. Until the secret exists the workflow exits 0 with a warning.
-5. **Ship the shared config** as one pull request from branch `factory/setup` (worktree
-   `git worktree add .worktrees/setup -b factory/setup main`, commit there, `git push -u origin
-   factory/setup`, `gh pr create --base main`), then **flag it for human review**
-   (see "Flagging") — it is config, never committed to `main`, never merged by you. It contains:
-   - `.claude/settings.json` — offer it first with AskUserQuestion. If accepted, it prompts
-     teammates to install this plugin: marketplace `yogendrasgautam/skills`, plugin
-     `shared-software-factory@engineering-skills`;
-   - `.factory/profile.md` — generated in step 7 from `${CLAUDE_PLUGIN_ROOT}/skills/factory/templates/profile.shared.md`;
-   - `.factory/factory_team.py` — a copy of `${CLAUDE_SKILL_DIR}/scripts/factory_team.py`, re-copied on
-     every setup re-run so it tracks the plugin version;
-   - the ONE workflow matching the mode, copied from
-     `${CLAUDE_PLUGIN_ROOT}/skills/factory/templates/workflows/factory-dashboard-<mode>.yml` to
-     `.github/workflows/factory-dashboard.yml` (`pages` or `projects`, never both).
-   Print the PR as a link and the manual steps still open (Pages settings, or the token secret).
-6. Skills dir is the bundled library: `${CLAUDE_SKILL_DIR}/library`. Resolve it to an absolute path
+6. `.claude/settings.json` (first setup only): offer it with AskUserQuestion. If accepted, write
+   it in the setup worktree so it prompts teammates to install this plugin (marketplace
+   `yogendrasgautam/skills`, plugin `shared-software-factory@engineering-skills`):
+   `{"extraKnownMarketplaces":{"engineering-skills":{"source":{"source":"github","repo":"yogendrasgautam/skills"}}},"enabledPlugins":{"shared-software-factory@engineering-skills":true}}`
+   (confirm the key names against the Claude Code settings reference). It holds nothing sensitive.
+7. Skills dir is the bundled library: `${CLAUDE_SKILL_DIR}/library`. Resolve it to an absolute path
    on every run; `skills_dir` is never stored in any profile or file. Check it has `grilling`,
    `grill-with-docs`, `to-spec`, `implement`, `tdd`, `code-review`, `to-tickets`,
    `domain-modeling`. Missing → the plugin install is broken; stop and say so.
-7. Inspect the repo (manifest files, test dirs, lint configs, README/CONTRIBUTING/CLAUDE.md,
-   CONTEXT.md, docs/adr), fill in `templates/profile.shared.md` (fields: repo, stack, install,
-   test, lint, has_ui, max_parallel, conventions — no `skills_dir`, no absolute paths), write it to
-   `.factory/profile.md` (in the `factory/setup` worktree, for the PR in step 5) and copy it to the
-   local `factory/profile.md`.
-   Empty repo → `stack: undecided`; the grilling picks the stack, the first ticket scaffolds it,
-   and you re-run setup after that ticket merges (a new PR updates `.factory/profile.md`). Re-run
-   setup after a plugin update to refresh `.factory/factory_team.py`.
+8. **Ship the shared config LAST** (first setup): as one pull request from branch `factory/setup`
+   (the worktree from step 4: `git add` the files below, commit, `git push -u origin factory/setup`,
+   `gh pr create --base main`), then **flag it for human review** (see "Flagging") — it is config,
+   never committed to `main`, never merged by you. The PR contains `.factory/profile.md` (step 4),
+   `.factory/factory_team.py` and `.github/workflows/factory-dashboard.yml` (step 5) and, if
+   accepted, `.claude/settings.json` (step 6). Print the PR as a link and the manual steps still
+   open (Pages settings, or the token secret). Remove the worktree afterwards.
 
 ### Grill (used by `plan` and `<feature>`)
 
@@ -304,7 +325,7 @@ Repeat until nothing is runnable or in flight (`next` = at most one new job):
    - Any CHANGES and N < MAX_ROUNDS → stage `build`, `SendMessage` `builder-<id>`:
      `Round N reviews are in factory/jobs/<id>/round-N/. Fix every [blocker], re-run tests, commit, push, update build.md ("Round N fixes").`
      (If it can't be resumed, spawn a fresh `builder` named `builder-<id>` with the same message
-     plus "read build.md for your previous work".) Then review round N+1.
+     plus "read build.md for your previous work" and `Skills dir: ${CLAUDE_SKILL_DIR}/library (absolute path resolved).`.) Then review round N+1.
    - Any CHANGES and N = MAX_ROUNDS → **flag**: "reviews still CHANGES after N rounds".
 
    **Approve.** All four PASS → stage `approve`. Spawn `approver`: `Job <id>. Branch factory/<id>, worktree .worktrees/<id>, Base branch <base>, PR #<pr>. Rounds 1..N. Skills dir: ${CLAUDE_SKILL_DIR}/library (absolute path resolved). Write factory/jobs/<id>/decision.md.`
@@ -406,7 +427,7 @@ Create the worktree from the pushed branch: `git fetch origin`, then
 `factory/<id>` already exists, `git worktree add .worktrees/<id> factory/<id>` and
 `git -C .worktrees/<id> pull --ff-only`). Spawn a fresh `shared-software-factory:builder` named
 `builder-<id>` when the flow needs one, with the usual message plus "read build.md for your
-previous work" (it reads the rebuilt build.md and review files). Then rebuild the board entry
+previous work" and `Skills dir: ${CLAUDE_SKILL_DIR}/library (absolute path resolved).` (it reads the rebuilt build.md and review files). Then rebuild the board entry
 with `factory_team.py board`; `reviews`/`rounds`/`decision` come from the files just created.
 
 **Cross-clone scope.** In a clone that does not hold the job (it had to be rebuilt),

@@ -15,7 +15,8 @@ Otherwise read `<Skills dir>/prototype/UI.md` and review:
 - Contrast and color usage; no hard-coded values where the repo has a theme.
 
 ## Inputs
-- `factory/profile.md` (stack, test cmd). The skills directory path is given in your prompt (`Skills dir: <path>`); `<Skills dir>` below means that path, `factory/jobs/<id>/spec.md`, `factory/jobs/<id>/build.md`.
+- `factory/profile.md` (stack, test cmd), `factory/jobs/<id>/spec.md`, `factory/jobs/<id>/build.md`.
+- The skills directory path is given in your prompt (`Skills dir: <path>`). `<Skills dir>` in this file means that path.
 - The change: `git diff <base>...factory/<id>` and `git log <base>..factory/<id> --oneline` (`<base>` is the "Base branch" in your prompt; `main` unless the job is stacked).
   Full files are in the worktree `.worktrees/<id>`.
 - Earlier rounds' reviews (`factory/jobs/<id>/round-*/`) and any `human-note.md` — check prior blockers are fixed.

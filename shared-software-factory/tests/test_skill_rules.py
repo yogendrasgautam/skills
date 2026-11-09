@@ -175,10 +175,56 @@ class SkillRulesTest(unittest.TestCase):
         self.assertIn("Settings -> Pages", block)
         self.assertIn("GitHub Actions", block)
 
-    def test_setup_second_developer_does_not_overwrite(self):
+    def test_setup_three_cases_and_open_pr_check(self):
         block = self.setup_block()
-        self.assertIn("Second developer", block)
-        self.assertIn("must NOT regenerate or overwrite", block)
+        self.assertIn("**(a) First setup**", block)
+        self.assertIn("**(b) Join**", block)
+        self.assertIn("**(c) Refresh**", block)
+        self.assertIn("git cat-file -e origin/main:.factory/profile.md", block)
+        self.assertIn("gh pr list --head factory/setup --state open --json url", block)
+        self.assertIn("NEVER regenerate or overwrite", block)
+        self.assertIn("factory/setup-refresh", block)
+        self.assertIn("setup refresh", block)
+        self.assertIn("wait for that PR", block)
+        self.assertNotIn("re-copies the helper", block)
+        self.assertNotIn("a new PR updates `.factory/profile.md`", block)
+
+    def test_setup_refresh_in_frontmatter(self):
+        head = self.text.split("\n---\n", 1)[0]
+        self.assertIn("setup refresh", head)
+
+    def test_setup_profile_before_pr_creation(self):
+        block = self.setup_block()
+        profile = block.index("4. **Profile**")
+        pr = block.index("**Ship the shared config LAST**")
+        self.assertLess(profile, pr)
+        self.assertTrue(block.rstrip().rsplit("\n", 1)[0].count("**Ship the shared config LAST**") == 1)
+        # the PR step is the last numbered step
+        last_step = [l for l in block.splitlines() if l[:2].strip(". ").isdigit() and l[1:3] == ". "][-1]
+        self.assertIn("Ship the shared config LAST", last_step)
+
+    def test_setup_settings_json_shape(self):
+        block = self.setup_block()
+        self.assertIn('"extraKnownMarketplaces"', block)
+        self.assertIn('"enabledPlugins"', block)
+        self.assertIn("confirm the key names against the Claude Code settings reference", block)
+
+    def test_setup_project_create_captures_number(self):
+        block = self.setup_block()
+        self.assertIn("--format json --jq .number", block)
+        self.assertIn("gh auth refresh -s project", block)
+
+    def test_setup_template_paths_exist(self):
+        import re
+        tdir = os.path.join(os.path.dirname(SKILL), "templates")
+        block = self.setup_block()
+        names = ["dashboard.html", "board.json", "backlog.md", "README.md", "profile.shared.md",
+                 "workflows/factory-dashboard-pages.yml", "workflows/factory-dashboard-projects.yml"]
+        for n in names:
+            self.assertTrue(os.path.exists(os.path.join(tdir, n)), n)
+        for m in re.findall(r"templates/([\w./-]+\.(?:md|html|json|yml))", block):
+            self.assertTrue(os.path.exists(os.path.join(tdir, m)), m)
+        self.assertIn("factory-dashboard-<mode>.yml", block)
 
     def test_setup_skills_dir_never_stored(self):
         block = self.setup_block()
@@ -198,16 +244,18 @@ class SkillRulesTest(unittest.TestCase):
             self.assertIn(key, text)
 
     def test_agent_spawn_prompts_carry_skills_dir(self):
-        prompts = [l for l in self.text.splitlines()
-                   if "Spawn" in l or l.strip().startswith("`Job <id>") or l.strip().startswith("`Epic:")]
-        carried = [l for l in self.text.splitlines() if "Skills dir: ${CLAUDE_SKILL_DIR}/library" in l]
-        # planner, spec-writer, builder, reviewers, approver
-        self.assertGreaterEqual(len(carried), 5)
-        self.assertIn("absolute path resolved", self.text)
-        for needle in ("`Epic: \"<epic>\". Skills dir:", "Ticket: factory/jobs/<id>/ticket.md (GitHub #<N>). Skills dir:",
-                       "Base branch <base>, issue #<N>. Skills dir:", "Round folder factory/jobs/<id>/round-N/. Skills dir:",
-                       "Rounds 1..N. Skills dir:"):
-            self.assertIn(needle, self.text)
+        sd = "Skills dir: ${CLAUDE_SKILL_DIR}/library (absolute path resolved)."
+        self.assertIn(sd, self.text)
+        needles = {
+            "planner": "`Epic: \"<epic>\". " + sd,
+            "spec-writer": "Ticket: factory/jobs/<id>/ticket.md (GitHub #<N>). " + sd,
+            "builder": "Base branch <base>, issue #<N>. " + sd,
+            "reviewers": "Round folder factory/jobs/<id>/round-N/. " + sd,
+            "approver": "Rounds 1..N. " + sd,
+            "fallback builder": "plus \"read build.md for your previous work\" and `" + sd + "`",
+        }
+        for name, needle in needles.items():
+            self.assertIn(needle, self.text, name)
 
     def test_agents_do_not_read_skills_dir_from_profile(self):
         agents = os.path.join(os.path.dirname(SKILL), "..", "..", "agents")
