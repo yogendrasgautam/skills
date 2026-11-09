@@ -73,7 +73,8 @@ jobs:
         if: steps.gate.outputs.run == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
-        run: python3 .factory/factory_team.py board --repo ${{ github.repository }} --out factory
+        # --me is explicit: GITHUB_TOKEN may not read /user (403), and the bot owns no jobs.
+        run: python3 .factory/factory_team.py board --repo ${{ github.repository }} --out factory --me 'github-actions[bot]'
       - name: Move cards by stage
         if: steps.gate.outputs.run == 'true'
         env:

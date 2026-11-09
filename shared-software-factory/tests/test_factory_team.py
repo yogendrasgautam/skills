@@ -295,6 +295,34 @@ class CliTests(unittest.TestCase):
             self.assertEqual(main(["status", "--repo", "o/r", "--me", "me"]), 0)
         self.assertIn("Job | Stage | Owner", out.getvalue())
 
+    # ---- C2: --me optional for board/dashboard when `gh api user` is refused ----
+    @staticmethod
+    def _user_403(calls):
+        inner = fake_gh(calls)
+
+        def run(args):
+            if args[:3] == ["gh", "api", "user"]:
+                calls.append(list(args))
+                raise subprocess.CalledProcessError(1, args, stderr="HTTP 403: Resource not accessible by integration")
+            return inner(args)
+        return run
+
+    def test_cli_board_and_dashboard_without_me_survive_user_403(self):
+        for cmd, files in (("board", ["board.json"]), ("dashboard", ["board.json", "dashboard.html"])):
+            factory_team.RUN = self._user_403([])
+            with tempfile.TemporaryDirectory() as d:
+                self.assertEqual(main([cmd, "--repo", "o/r", "--out", d]), 0, cmd)
+                for name in files:
+                    self.assertTrue(os.path.exists(os.path.join(d, name)), name)
+
+    def test_cli_status_without_me_fails_on_user_403(self):
+        factory_team.RUN = self._user_403([])
+        err = io.StringIO()
+        with redirect_stderr(err), redirect_stdout(io.StringIO()):
+            self.assertEqual(main(["status", "--repo", "o/r"]), 1)
+        self.assertEqual(len(err.getvalue().strip().splitlines()), 1)
+        self.assertIn("403", err.getvalue())
+
     def test_cli_exits_1_when_gh_missing(self):
         def boom(args):
             raise FileNotFoundError("gh")
@@ -345,6 +373,53 @@ class MergeLocalStateTests(unittest.TestCase):
             self.assertEqual(main(["board", "--repo", "o/r", "--out", d, "--me", "x"]), 0)
             with open(os.path.join(d, "board.json"), encoding="utf-8") as f:
                 self.assertEqual(json.load(f)["jobs"][0]["issue"], 42)
+
+    # ---- C1: the orchestrator owns `stage` for its own jobs ----
+    def test_own_job_keeps_local_stage_over_derived(self):
+        old = {"jobs": [_job("1-a", owner="me", stage="pr-open")]}
+        new = merge_local_state({"jobs": [_job("1-a", owner="me", stage="approve")]}, old, "me")
+        self.assertEqual(new["jobs"][0]["stage"], "pr-open")
+
+    def test_own_job_terminal_derived_stage_wins(self):
+        for derived in ("merged", "closed", "needs-human"):
+            old = {"jobs": [_job("1-a", owner="me", stage="pr-open")]}
+            new = merge_local_state({"jobs": [_job("1-a", owner="me", stage=derived)]}, old, "me")
+            self.assertEqual(new["jobs"][0]["stage"], derived, derived)
+
+    def test_foreign_job_takes_derived_stage(self):
+        old = {"jobs": [_job("1-a", owner="bob", stage="pr-open")]}
+        new = merge_local_state({"jobs": [_job("1-a", owner="bob", stage="approve")]}, old, "me")
+        self.assertEqual(new["jobs"][0]["stage"], "approve")
+
+    def test_no_me_keeps_derived_stage(self):
+        old = {"jobs": [_job("1-a", owner="", stage="pr-open")]}
+        for me in (None, ""):
+            new = merge_local_state({"jobs": [_job("1-a", owner="", stage="approve")]}, old, me)
+            self.assertEqual(new["jobs"][0]["stage"], "approve")
+
+    def test_cli_rebuild_keeps_own_pr_open_stage(self):
+        def run(args):
+            if args[:3] == ["gh", "issue", "list"]:
+                return json.dumps([gh_issue(assignees=["me"], labels=("factory", "in-progress"))])
+            if args[:3] == ["gh", "pr", "list"]:
+                return json.dumps([gh_pr()])
+            if args[:3] == ["gh", "issue", "view"]:
+                return json.dumps({"comments": [
+                    {"body": "<!-- factory:decision -->", "authorAssociation": "MEMBER"}]})
+            raise AssertionError(args)
+        factory_team.RUN = run
+        with tempfile.TemporaryDirectory() as d:
+            path = os.path.join(d, "board.json")
+            main(["board", "--repo", "o/r", "--out", d, "--me", "me"])
+            with open(path, encoding="utf-8") as f:
+                data = json.load(f)
+            self.assertEqual(data["jobs"][0]["stage"], "approve")
+            data["jobs"][0]["stage"] = "pr-open"
+            with open(path, "w", encoding="utf-8") as f:
+                json.dump(data, f)
+            main(["board", "--repo", "o/r", "--out", d, "--me", "me"])
+            with open(path, encoding="utf-8") as f:
+                self.assertEqual(json.load(f)["jobs"][0]["stage"], "pr-open")
 
     def test_cli_board_twice_keeps_hand_edited_decision(self):
         factory_team.RUN = fake_gh([])

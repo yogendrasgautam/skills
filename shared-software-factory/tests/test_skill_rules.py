@@ -277,6 +277,23 @@ class SkillRulesTest(unittest.TestCase):
         for name, needle in needles.items():
             self.assertIn(needle, self.text, name)
 
+    # ---- final review: C1 ----
+    def test_approved_label_on_issue_and_pr(self):
+        approve_step = self.text[self.text.index("**Approve.** All four PASS"):self.text.index("**Merge** (a `pr-open` job")]
+        self.assertIn("`factory-approved` to the PR **and** the issue", approve_step)
+        block = self.section("### `approve <job-id>`")
+        self.assertIn("add `factory-approved` to the PR and the issue", block)
+        self.assertIn("remove `needs-human-review` from the PR and the issue", block)
+        rework = self.section("### `rework <job-id> <note>`")
+        self.assertIn("Remove `needs-human-review` and `factory-approved` from the PR and the issue", rework)
+        flag = self.section("### Flagging (`flag(job, reason)`)")
+        self.assertIn("label the PR and the issue `needs-human-review`", flag)
+
+    def test_sync_keeps_own_stage_locally(self):
+        sync = self.text[self.text.index("1. **Sync.**"):self.text.index("2. **Promote.**")]
+        self.assertIn("for your own jobs `stage` is kept locally between syncs", sync.lower())
+        self.assertIn("may be stale (`approve`)", sync)
+
     def test_agents_do_not_read_skills_dir_from_profile(self):
         agents = os.path.join(os.path.dirname(SKILL), "..", "..", "agents")
         names = [n for n in os.listdir(agents) if n.endswith(".md")]

@@ -277,7 +277,11 @@ Repeat until nothing is runnable or in flight (`next` = at most one new job):
    and treat the result as the board; local files hold only caches. Then, for each non-merged job
    that is yours, `gh pr view` (state, checks, base) and read its blocked-by links from GitHub
    (the rebuild leaves `blockedBy` empty; you edit `blockedBy`, `reviews`, `rounds` and
-   `decision` in `factory/board.json`, and `board` preserves them for jobs still on GitHub). A PR a human merged/closed → update the board. Run
+   `decision` in `factory/board.json`, and `board` preserves them for jobs still on GitHub). A PR a human merged/closed → update the board.
+   For your own jobs `stage` is kept locally between Syncs (you are authoritative for it; only a
+   derived `merged`, `closed` or `needs-human` overrides it). Other developers' jobs show the stage
+   derived from GitHub, so the derived stage of a job in a rework round may be stale (`approve`)
+   until its owner's clone runs. Run
    `git fetch origin` and `git -C <main checkout> pull --ff-only`. Never drive a job whose
    owner is someone else.
 2. **Promote.** For each `blocked` job apply the readiness table. Ready → check capacity
@@ -335,8 +339,9 @@ Repeat until nothing is runnable or in flight (`next` = at most one new job):
    **Approve.** All four PASS → stage `approve`. Spawn `approver`: `Job <id>. Branch factory/<id>, worktree .worktrees/<id>, Base branch <base>, PR #<pr>. Rounds 1..N. Skills dir: ${CLAUDE_SKILL_DIR}/library (absolute path resolved). Write factory/jobs/<id>/decision.md.`
    Post decision.md on the issue as the `decision` comment (see "Posting shared history"), then
    read its first word:
-   - `APPROVE` → add label `factory-approved` to the PR, set decision `APPROVE`, stage `pr-open`,
-     then **Merge**.
+   - `APPROVE` → add label `factory-approved` to the PR **and** the issue (`gh pr edit <pr>
+     --add-label factory-approved`, `gh issue edit <N> --add-label factory-approved`; other clones
+     derive `pr-open` from the issue label), set decision `APPROVE`, stage `pr-open`, then **Merge**.
    - `ESCALATE` or anything else → **flag**, note = the approver's first reason.
 
    **Merge** (a `pr-open` job; re-evaluated on every scheduler pass):
@@ -370,7 +375,8 @@ table marks it) with its owner and link. It changes nothing on GitHub or locally
 
 ### Flagging (`flag(job, reason)`)
 
-Never merge. Set stage `needs-human`, note = reason; label the PR and issue `needs-human-review`;
+Never merge. Set stage `needs-human`, note = reason; label the PR and the issue `needs-human-review`
+(the stage is derived from the issue label);
 post one PR comment with the reason, a link to the PR, the "Notes for the human" from decision.md if any, and the
 exact commands to continue (`/factory approve <id>` or `/factory rework <id> "<note>"`). Leave
 the PR **open**. Jobs stacked on or blocked by this one keep waiting (the readiness table).
@@ -451,7 +457,7 @@ what stage it is in and stop. If `factory/jobs/<id>/` is missing, run "Rebuildin
 GitHub" for the files (no worktree is needed to approve). First `gh pr view` — if the human already
 merged it on GitHub, just sync the board. Otherwise append `\n---\nHUMAN APPROVE <date>` to
 decision.md and update the `decision` comment (see "Posting shared history"), set decision
-`APPROVE`, remove `needs-human-review`, add `factory-approved`, set
+`APPROVE`, remove `needs-human-review` from the PR and the issue, add `factory-approved` to the PR and the issue, set
 stage `pr-open`, and run **Merge** (same gates: base `main`, checks green; a human approval
 overrides the approver's ESCALATE, not a failing CI). Then run `run` to release dependents.
 
@@ -471,7 +477,7 @@ GitHub" first, which also creates the worktree from `origin/factory/<id>` and sp
 1. Next round number N = the highest `review round-N` marker on the issue (or the last restored
    `round-N` folder, or the board's last round) + 1. `mkdir -p round-N`, write the note to
    `factory/jobs/<id>/round-N/human-note.md` (a blocker by definition) and post it as the
-   `human-note round-N` comment (see "Posting shared history"). Remove `needs-human-review`.
+   `human-note round-N` comment (see "Posting shared history"). Remove `needs-human-review` and `factory-approved` from the PR and the issue.
 2. Stage `build`, note "human rework". `SendMessage` `builder-<id>` (or re-spawn it, reading build.md):
    `Human feedback is in factory/jobs/<id>/round-N/human-note.md. Address it, re-run tests, commit, push, update build.md.`
 3. Continue at review round N+1, with MAX_ROUNDS counted from this rework.

@@ -229,21 +229,39 @@ def fetch_state(repo: str, run: Callable):
     return issues, prs, comments
 
 
-def _board_for(args, run: Callable) -> dict:
-    me = args.me or run(["gh", "api", "user", "--jq", ".login"]).strip()
+def _resolve_me(args, run: Callable, optional: bool) -> str:
+    """The caller's login: `--me`, else `gh api user`.
+
+    With `optional`, a refused lookup (e.g. GITHUB_TOKEN in Actions, which may not
+    read /user) yields "" — nothing counts as mine. Otherwise the failure propagates.
+    """
+    if args.me:
+        return args.me
+    try:
+        return run(["gh", "api", "user", "--jq", ".login"]).strip()
+    except subprocess.CalledProcessError:
+        if optional:
+            return ""
+        raise
+
+
+def _board_for(args, run: Callable, me: str) -> dict:
     issues, prs, comments = fetch_state(args.repo, run)
     now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     return build_board(args.repo, issues, prs, comments, me, now)
 
 
 LOCAL_FIELDS = ("reviews", "rounds", "decision", "blockedBy")
+# Derived stages that override the orchestrator's own `stage` (GitHub truth wins).
+TERMINAL_STAGES = ("merged", "closed", "needs-human")
 
 
-def merge_local_state(new_board: dict, old_board: dict) -> dict:
+def merge_local_state(new_board: dict, old_board: dict, me: Optional[str] = None) -> dict:
     """Carry orchestrator-edited fields from the old board into a rebuilt one.
 
     Only jobs present in both are merged; jobs only in `old_board` are dropped
-    (GitHub is the truth for existence).
+    (GitHub is the truth for existence). For a job owned by `me` the orchestrator
+    is authoritative for `stage`, unless the derived stage is merged/closed/needs-human.
     """
     old_jobs = {j.get("id"): j for j in (old_board or {}).get("jobs") or [] if isinstance(j, dict)}
     for job in new_board.get("jobs", []):
@@ -255,6 +273,9 @@ def merge_local_state(new_board: dict, old_board: dict) -> dict:
                 job[key] = old[key]
         if not job.get("round") and old.get("round"):
             job["round"] = old["round"]
+        if (me and job.get("owner") == me and old.get("stage")
+                and job.get("stage") not in TERMINAL_STAGES):
+            job["stage"] = old["stage"]
     return new_board
 
 
@@ -267,17 +288,17 @@ def _load_board(path: str) -> dict:
     return data if isinstance(data, dict) else {}
 
 
-def _write_board(board: dict, out: str) -> None:
+def _write_board(board: dict, out: str, me: Optional[str] = None) -> None:
     os.makedirs(out, exist_ok=True)
     path = os.path.join(out, "board.json")
-    board = merge_local_state(board, _load_board(path))
+    board = merge_local_state(board, _load_board(path), me)
     with open(path, "w", encoding="utf-8") as f:
         json.dump(board, f, indent=2)
         f.write("\n")
 
 
 def _cmd_claim(args, run):
-    me = args.me or run(["gh", "api", "user", "--jq", ".login"]).strip()
+    me = _resolve_me(args, run, optional=False)
     issue = json.loads(run([
         "gh", "issue", "view", str(args.issue), "--repo", args.repo,
         "--json", "number,url,assignees,labels"]))
@@ -292,15 +313,18 @@ def _cmd_claim(args, run):
 
 
 def _cmd_status(args, run):
-    sys.stdout.write(render_status(_board_for(args, run), args.repo))
+    me = _resolve_me(args, run, optional=False)
+    sys.stdout.write(render_status(_board_for(args, run, me), args.repo))
 
 
 def _cmd_board(args, run):
-    _write_board(_board_for(args, run), args.out)
+    me = _resolve_me(args, run, optional=True)
+    _write_board(_board_for(args, run, me), args.out, me)
 
 
 def _cmd_dashboard(args, run):
-    _write_board(_board_for(args, run), args.out)
+    me = _resolve_me(args, run, optional=True)
+    _write_board(_board_for(args, run, me), args.out, me)
     template = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "templates", "dashboard.html")
     shutil.copyfile(template, os.path.join(args.out, "dashboard.html"))
 
@@ -344,7 +368,8 @@ def build_parser() -> argparse.ArgumentParser:
     ):
         p = sub.add_parser(name, help=helptext)
         p.add_argument("--repo", required=True, help="OWNER/NAME")
-        p.add_argument("--me", help="GitHub login (default: gh api user)")
+        p.add_argument("--me", help="GitHub login (default: gh api user%s)" % (
+            "" if name == "status" else "; empty if that is refused"))
         if name != "status":
             p.add_argument("--out", default="factory", help="output directory (default: factory)")
         p.set_defaults(handler=handler)
