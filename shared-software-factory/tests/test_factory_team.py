@@ -1,19 +1,26 @@
+import io
+import json
 import os
 import sys
+import tempfile
 import unittest
+from contextlib import redirect_stderr, redirect_stdout
 
 sys.path.insert(
     0,
     os.path.join(os.path.dirname(__file__), "..", "skills", "factory", "scripts"),
 )
 
+import factory_team  # noqa: E402
 from factory_team import (  # noqa: E402
     Claim,
     build_board,
     claim_state,
     decide_claim_winner,
     derive_stage,
+    fetch_state,
     job_id,
+    main,
     markers_from_comments,
     render_status,
 )
@@ -198,6 +205,73 @@ class FactoryTeamBoard(unittest.TestCase):
         self.assertIn(
             "| 7-other | blocked | — | [#7](https://github.com/o/r/issues/7) | — |  |", out
         )
+
+
+def fake_gh(calls):
+    def run(args):
+        calls.append(list(args))
+        if args[:3] == ["gh", "issue", "list"]:
+            return json.dumps([gh_issue()])
+        if args[:3] == ["gh", "pr", "list"]:
+            return json.dumps([gh_pr()])
+        if args[:3] == ["gh", "issue", "view"]:
+            return json.dumps({"comments": [{"body": "<!-- factory:spec -->"}, {"body": "hi"}]})
+        if args[:3] == ["gh", "api", "user"]:
+            return "me\n"
+        raise AssertionError(args)
+    return run
+
+
+class CliTests(unittest.TestCase):
+    def tearDown(self):
+        factory_team.RUN = None
+
+    def test_fetch_state_uses_injected_runner(self):
+        calls = []
+        issues, prs, comments = fetch_state("o/r", fake_gh(calls))
+        self.assertEqual(issues[0]["number"], 42)
+        self.assertEqual(prs[0]["number"], 57)
+        self.assertEqual(comments, {42: ["<!-- factory:spec -->", "hi"]})
+        self.assertEqual(calls[0][:3], ["gh", "issue", "list"])
+        self.assertIn("factory", calls[0])
+        self.assertIn("--repo", calls[0])
+        self.assertEqual(calls[1][:3], ["gh", "pr", "list"])
+        self.assertEqual(calls[2][:4], ["gh", "issue", "view", "42"])
+
+    def test_cli_board_writes_valid_json(self):
+        calls = []
+        factory_team.RUN = fake_gh(calls)
+        with tempfile.TemporaryDirectory() as d:
+            self.assertEqual(main(["board", "--repo", "o/r", "--out", d]), 0)
+            with open(os.path.join(d, "board.json"), encoding="utf-8") as f:
+                data = json.load(f)
+        self.assertEqual(data["repo"], "o/r")
+        self.assertEqual(data["jobs"][0]["issue"], 42)
+        self.assertTrue(any(c[:3] == ["gh", "api", "user"] for c in calls))
+
+    def test_cli_dashboard_copies_html(self):
+        factory_team.RUN = fake_gh([])
+        with tempfile.TemporaryDirectory() as d:
+            self.assertEqual(main(["dashboard", "--repo", "o/r", "--out", d, "--me", "x"]), 0)
+            self.assertTrue(os.path.exists(os.path.join(d, "board.json")))
+            self.assertTrue(os.path.exists(os.path.join(d, "dashboard.html")))
+
+    def test_cli_status_prints_table(self):
+        factory_team.RUN = fake_gh([])
+        out = io.StringIO()
+        with redirect_stdout(out):
+            self.assertEqual(main(["status", "--repo", "o/r", "--me", "me"]), 0)
+        self.assertIn("Job | Stage | Owner", out.getvalue())
+
+    def test_cli_exits_1_when_gh_missing(self):
+        def boom(args):
+            raise FileNotFoundError("gh")
+        factory_team.RUN = boom
+        err = io.StringIO()
+        with redirect_stderr(err):
+            self.assertEqual(main(["status", "--repo", "o/r", "--me", "me"]), 1)
+        self.assertIn("gh", err.getvalue())
+        self.assertEqual(len(err.getvalue().strip().splitlines()), 1)
 
 
 if __name__ == "__main__":

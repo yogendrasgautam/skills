@@ -1,10 +1,16 @@
 """Team-coordination helpers for the shared software factory (stdlib only)."""
 from __future__ import annotations
 
+import argparse
+import json
+import os
 import re
+import shutil
+import subprocess
+import sys
 from dataclasses import dataclass
-from datetime import datetime, timedelta
-from typing import Optional
+from datetime import datetime, timedelta, timezone
+from typing import Callable, Optional
 
 IN_PROGRESS_LABEL = "in-progress"
 
@@ -185,3 +191,96 @@ def render_status(board: dict, repo: str) -> str:
             _cell(job["id"]), stage, job.get("owner") or "—",
             issue_cell, pr_cell, _cell(job.get("note", ""))))
     return "\n".join(lines) + "\n"
+
+
+# --- gh-backed CLI -------------------------------------------------------------------
+
+ISSUE_FIELDS = "number,title,url,state,labels,assignees,updatedAt"
+PR_FIELDS = "number,url,state,body,updatedAt,headRefName"
+
+# Tests (and Task 4) may override the runner; None means the real `gh`.
+RUN: Optional[Callable] = None
+
+
+def default_run(args: list) -> str:
+    return subprocess.run(args, check=True, capture_output=True, text=True).stdout
+
+
+def fetch_state(repo: str, run: Callable):
+    """(issues, prs, {issue number: [comment bodies]}) from GitHub via `run(argv) -> stdout`."""
+    issues = json.loads(run([
+        "gh", "issue", "list", "--repo", repo, "--label", "factory", "--state", "all",
+        "--limit", "500", "--json", ISSUE_FIELDS]))
+    prs = json.loads(run([
+        "gh", "pr", "list", "--repo", repo, "--state", "all",
+        "--limit", "500", "--json", PR_FIELDS]))
+    comments = {}
+    for issue in issues:
+        n = issue["number"]
+        data = json.loads(run(["gh", "issue", "view", str(n), "--repo", repo, "--json", "comments"]))
+        comments[n] = [c.get("body", "") for c in data.get("comments") or []]
+    return issues, prs, comments
+
+
+def _board_for(args, run: Callable) -> dict:
+    me = args.me or run(["gh", "api", "user", "--jq", ".login"]).strip()
+    issues, prs, comments = fetch_state(args.repo, run)
+    now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    return build_board(args.repo, issues, prs, comments, me, now)
+
+
+def _write_board(board: dict, out: str) -> None:
+    os.makedirs(out, exist_ok=True)
+    with open(os.path.join(out, "board.json"), "w", encoding="utf-8") as f:
+        json.dump(board, f, indent=2)
+        f.write("\n")
+
+
+def _cmd_status(args, run):
+    sys.stdout.write(render_status(_board_for(args, run), args.repo))
+
+
+def _cmd_board(args, run):
+    _write_board(_board_for(args, run), args.out)
+
+
+def _cmd_dashboard(args, run):
+    _write_board(_board_for(args, run), args.out)
+    template = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "templates", "dashboard.html")
+    shutil.copyfile(template, os.path.join(args.out, "dashboard.html"))
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(prog="factory_team.py")
+    sub = parser.add_subparsers(dest="command", required=True)
+    for name, handler, helptext in (
+        ("status", _cmd_status, "print the status table"),
+        ("board", _cmd_board, "write <out>/board.json"),
+        ("dashboard", _cmd_dashboard, "write board.json and dashboard.html to <out>"),
+    ):
+        p = sub.add_parser(name, help=helptext)
+        p.add_argument("--repo", required=True, help="OWNER/NAME")
+        p.add_argument("--me", help="GitHub login (default: gh api user)")
+        if name != "status":
+            p.add_argument("--out", default="factory", help="output directory (default: factory)")
+        p.set_defaults(handler=handler)
+    return parser
+
+
+def main(argv=None) -> int:
+    args = build_parser().parse_args(argv)
+    run = RUN or default_run
+    try:
+        args.handler(args, run)
+    except FileNotFoundError:
+        sys.stderr.write("error: the gh CLI was not found; install it and run `gh auth login`\n")
+        return 1
+    except subprocess.CalledProcessError as e:
+        detail = ((e.stderr or "").strip().splitlines() or ["gh failed (run `gh auth login`?)"])[0]
+        sys.stderr.write("error: gh failed: %s\n" % detail)
+        return 1
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

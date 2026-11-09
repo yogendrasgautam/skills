@@ -33,6 +33,9 @@
   .chip { font-size: 10px; padding: 1px 6px; border-radius: 999px; background: var(--pend-bg); color: var(--pend); }
   .chip.PASS { background: var(--pass-bg); color: var(--pass); }
   .chip.CHANGES { background: var(--chg-bg); color: var(--chg); }
+  .badge.stale { background: var(--human-bg); color: var(--human); }
+  .card a { color: var(--accent); text-decoration: none; }
+  .card a:hover { text-decoration: underline; }
   .badge { font-size: 10px; padding: 1px 6px; border-radius: 4px; font-weight: 600; }
   .badge.APPROVE { background: var(--pass-bg); color: var(--pass); }
   .badge.ESCALATE { background: var(--human-bg); color: var(--human); }
@@ -98,15 +101,28 @@ function chips(reviews) {
   return REVIEWERS.map(k => `<span class="chip ${esc(reviews?.[k])}" title="${k}: ${esc(reviews?.[k] || "pending")}">${k}</span>`).join("");
 }
 
+// Only http(s) URLs become links; anything else renders as plain text.
+function link(url, text) {
+  return /^https?:\/\//i.test(url || "") ? `<a href="${esc(url)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">${esc(text)}</a>` : esc(text);
+}
+
+function links(j) {
+  const parts = [];
+  if (j.issue) parts.push(link(j.issueUrl, `#${j.issue}`));
+  if (j.pr) parts.push(link(j.prUrl, `PR #${j.pr}`));
+  return parts.join(" · ");
+}
+
 function card(j) {
   const rounds = (j.rounds && j.rounds.length) ? j.rounds
     : (j.reviews ? [{ n: j.round || 1, reviews: j.reviews }] : []);
   const human = j.stage === "needs-human";
   return `<div class="card ${human ? "human" : ""} ${openId === j.id ? "active" : ""}" tabindex="0" data-id="${esc(j.id)}">
-    <div class="id">${esc(j.id)} ${j.decision ? `<span class="badge ${esc(j.decision)}">${esc(j.decision)}</span>` : ""}</div>
+    <div class="id">${esc(j.id)} ${j.decision ? `<span class="badge ${esc(j.decision)}">${esc(j.decision)}</span>` : ""}${j.stale ? ` <span class="badge stale" title="claimed but no activity for days">stale</span>` : ""}</div>
     <div class="title">${esc(j.title || "")}</div>
     <div class="sub">${esc(j.branch || "")}${j.round ? ` · round ${j.round}` : ""}</div>
-    <div class="sub">${j.issue ? `#${esc(j.issue)}` : ""}${j.pr ? ` · PR #${esc(j.pr)}` : ""}${j.base && j.base !== "main" ? ` · stacked on ${esc(j.base)}` : ""}${(j.blockedBy || []).length ? ` · blocked by ${j.blockedBy.map(esc).join(", ")}` : ""}</div>
+    <div class="sub">${links(j)}${j.base && j.base !== "main" ? ` · stacked on ${esc(j.base)}` : ""}${(j.blockedBy || []).length ? ` · blocked by ${j.blockedBy.map(esc).join(", ")}` : ""}</div>
+    ${j.owner ? `<div class="sub">owner: ${esc(j.owner)}</div>` : ""}
     ${rounds.map(r => `<div class="round"><span class="n">R${esc(r.n)}</span>${chips(r.reviews)}</div>`).join("")}
     ${j.note ? `<div class="note">${esc(j.note)}</div>` : ""}
   </div>`;
