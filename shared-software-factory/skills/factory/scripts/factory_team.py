@@ -206,6 +206,9 @@ def default_run(args: list) -> str:
     return subprocess.run(args, check=True, capture_output=True, text=True).stdout
 
 
+TRUSTED_ASSOCIATIONS = ("OWNER", "MEMBER", "COLLABORATOR")
+
+
 def fetch_state(repo: str, run: Callable):
     """(issues, prs, {issue number: [comment bodies]}) from GitHub via `run(argv) -> stdout`."""
     issues = json.loads(run([
@@ -218,7 +221,11 @@ def fetch_state(repo: str, run: Callable):
     for issue in issues:
         n = issue["number"]
         data = json.loads(run(["gh", "issue", "view", str(n), "--repo", repo, "--json", "comments"]))
-        comments[n] = [c.get("body", "") for c in data.get("comments") or []]
+        # Only repo insiders may move a job's state; comments without the field are dropped.
+        comments[n] = [
+            c.get("body", "") for c in data.get("comments") or []
+            if c.get("authorAssociation") in TRUSTED_ASSOCIATIONS
+        ]
     return issues, prs, comments
 
 

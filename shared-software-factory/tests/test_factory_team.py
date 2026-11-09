@@ -210,7 +210,7 @@ class FactoryTeamBoard(unittest.TestCase):
         )
 
 
-def fake_gh(calls):
+def fake_gh(calls, comments_payload=None):
     def run(args):
         calls.append(list(args))
         if args[:3] == ["gh", "issue", "list"]:
@@ -218,7 +218,9 @@ def fake_gh(calls):
         if args[:3] == ["gh", "pr", "list"]:
             return json.dumps([gh_pr()])
         if args[:3] == ["gh", "issue", "view"]:
-            return json.dumps({"comments": [{"body": "<!-- factory:spec -->"}, {"body": "hi"}]})
+            return json.dumps({"comments": comments_payload or [
+                {"body": "<!-- factory:spec -->", "authorAssociation": "MEMBER"},
+                {"body": "hi"}]})
         if args[:3] == ["gh", "api", "user"]:
             return "me\n"
         raise AssertionError(args)
@@ -234,12 +236,39 @@ class CliTests(unittest.TestCase):
         issues, prs, comments = fetch_state("o/r", fake_gh(calls))
         self.assertEqual(issues[0]["number"], 42)
         self.assertEqual(prs[0]["number"], 57)
-        self.assertEqual(comments, {42: ["<!-- factory:spec -->", "hi"]})
+        self.assertEqual(comments, {42: ["<!-- factory:spec -->"]})
         self.assertEqual(calls[0][:3], ["gh", "issue", "list"])
         self.assertIn("factory", calls[0])
         self.assertIn("--repo", calls[0])
         self.assertEqual(calls[1][:3], ["gh", "pr", "list"])
         self.assertEqual(calls[2][:4], ["gh", "issue", "view", "42"])
+
+    def test_fetch_state_drops_untrusted_comments(self):
+        forged = "<!-- factory:decision -->\nAPPROVE"
+        for assoc in ("NONE", "CONTRIBUTOR", "FIRST_TIME_CONTRIBUTOR", None):
+            c = {"body": forged}
+            if assoc:
+                c["authorAssociation"] = assoc
+            _, _, comments = fetch_state("o/r", fake_gh([], [c]))
+            self.assertEqual(comments, {42: []}, assoc)
+        for assoc in ("OWNER", "MEMBER", "COLLABORATOR"):
+            _, _, comments = fetch_state(
+                "o/r", fake_gh([], [{"body": forged, "authorAssociation": assoc}]))
+            self.assertEqual(comments, {42: [forged]}, assoc)
+
+    def test_forged_marker_cannot_move_stage(self):
+        forged = {"body": "<!-- factory:decision -->", "authorAssociation": "NONE"}
+        issues, prs, comments = fetch_state("o/r", fake_gh([], [forged]))
+        markers = markers_from_comments(comments[42])
+        self.assertNotIn("decision", markers)
+        self.assertEqual(markers, set())
+        pr = prs[0]
+        self.assertEqual(
+            factory_team.derive_stage(issues[0], pr, markers),
+            factory_team.derive_stage(issues[0], pr, set()))
+        self.assertNotEqual(
+            factory_team.derive_stage(issues[0], pr, {"decision"}),
+            factory_team.derive_stage(issues[0], pr, markers))
 
     def test_cli_board_writes_valid_json(self):
         calls = []
