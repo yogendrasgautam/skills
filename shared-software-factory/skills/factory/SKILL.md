@@ -8,7 +8,7 @@ disable-model-invocation: true
 # Software Factory — orchestrator
 
 You (this session) are the **orchestrator**. You grill the user, run the scheduler, spawn every
-agent, and are the **only writer of `factory/board.json`** and the only one who talks to the
+agent, and (with `factory_team.py`) are the **only writer of `factory/board.json`** and the only one who talks to the
 user. Agents get context from files, never from this conversation, and each writes only its own
 file. Agents are non-interactive — **all user questions happen here, before specs exist.**
 
@@ -98,17 +98,18 @@ The board is rebuilt from GitHub on every `run` (Sync) by `factory_team.py board
 leaves `blockedBy`, `reviews`, `rounds` and `decision` empty, because they cannot be derived
 from GitHub inputs. It is **not** the complete board: read blocked-by links from GitHub
 (`gh api repos/<repo>/issues/<n>/dependencies/blocked_by`, falling back to the issue's
-`## Blocked by` body line), and keep review chips, rounds and decision in your own working notes
-or the local cache. Jobs of other developers appear with `owner` = their login; they are visible
+`## Blocked by` body line), and record review chips, rounds, decision and blockedBy yourself by
+editing those four fields in `factory/board.json`; `factory_team.py board` preserves them across
+rebuilds for every job still on GitHub (jobs gone from GitHub are dropped). Jobs of other developers appear with `owner` = their login; they are visible
 but never yours to drive. Each job also carries `issueUrl` (and a PR URL) for links.
 
 ```json
 { "jobs": [ {
-  "id": "003-rate-limiting", "title": "Rate limiting on the API",
+  "id": "42-rate-limiting", "title": "Rate limiting on the API",   // <issue>-<slug>; slug = kebab-case, at most 4 words
   "plan": "api-hardening", "ticket": "T3",
   "issue": 42, "epic": 40, "pr": 57,
-  "blockedBy": ["001-token-store"],       // job ids; mirrors the issue's native blocked-by links
-  "branch": "factory/003-rate-limiting",
+  "blockedBy": ["41-token-store"],        // job ids; mirrors the issue's native blocked-by links
+  "branch": "factory/42-rate-limiting",
   "base": "main",                          // or the blocker's branch when stacked
   "stage": "review",   // blocked | spec | build | review | approve | pr-open | merged | needs-human
   "round": 2,
@@ -200,7 +201,7 @@ Before any spec or ticket exists, run the `grill-with-docs` skill **yourself, in
      `gh api -X POST repos/<repo>/issues/<epic>/sub_issues -F sub_issue_id=$ID`;
      `gh api -X POST repos/<repo>/issues/<ticket>/dependencies/blocked_by -F issue_id=<blocker's ID>`.
      If an endpoint 404s/422s (older GitHub plan), keep the `## Blocked by` body line as the
-     only record, say so in the epic, and read dependencies from board.json instead.
+     only record, say so in the epic, and read dependencies from that body line on GitHub (GitHub stays the source).
 5. Add one board entry per ticket with stage `blocked` (meaning "not started yet"; `blockedBy`
    may be empty, in which case it is simply queued and the scheduler promotes it). Append to `factory/backlog.md`: `- [ ] #<N> <title> {plan: <slug>#T<n>, after: #a,#b}`.
 6. Report: epic as a link, N tickets (each as a `[#N](url)` link), which start immediately in parallel. Then run **`run`**.
@@ -220,25 +221,32 @@ Repeat until nothing is runnable or in flight (`next` = at most one new job):
 1. **Sync.** Run `python3 ${CLAUDE_SKILL_DIR}/scripts/factory_team.py board --repo <owner/name> --out factory`
    and treat the result as the board; local files hold only caches. Then, for each non-merged job
    that is yours, `gh pr view` (state, checks, base) and read its blocked-by links from GitHub
-   (the rebuild leaves `blockedBy` empty). A PR a human merged/closed → update the board. Run
+   (the rebuild leaves `blockedBy` empty; you edit `blockedBy`, `reviews`, `rounds` and
+   `decision` in `factory/board.json`, and `board` preserves them for jobs still on GitHub). A PR a human merged/closed → update the board. Run
    `git fetch origin` and `git -C <main checkout> pull --ff-only`. Never drive a job whose
    owner is someone else.
-2. **Promote.** For each `blocked` job apply the readiness table. Ready → **claim** it, then
-   create its workspace and start it.
+2. **Promote.** For each `blocked` job apply the readiness table. Ready → check capacity
+   **first**: respect `max_parallel` (count jobs in spec/build/review/approve); no free slot →
+   leave it queued and do not claim. Otherwise **claim** it, then create its workspace and
+   start it.
 
-   **Claim.** Before promoting, run `claim_state` (from `factory_team.py`) on
-   `gh issue view <N> --json number,url,assignees,labels`:
-   - `other` → skip the job and print the holder with the link: `[#<N>](<url>) is held by @<holder>`.
+   **Claim.** Run `python3 ${CLAUDE_SKILL_DIR}/scripts/factory_team.py claim check --repo <owner/name> --issue <N>`.
+   It prints one line:
+   - `other <holder> <url>` → skip the job and print who has it with the link:
+     `[#<N>](<url>) is held by @<holder>` (holder `none` → `[#<N>](<url>) is claimed (no assignee)`).
    - `mine` → proceed.
-   - `free` → `gh issue edit <N> --add-assignee @me --add-label in-progress`, then re-read with
-     `gh issue view <N> --json number,url,assignees,labels` and keep the claim only if
-     `decide_claim_winner` is true (you are the first assignee). Otherwise you lost the race:
-     remove your own assignee and label (`gh issue edit <N> --remove-assignee @me`; drop
-     `in-progress` only if no assignee remains, since the winner relies on it) and skip.
+   - `free` → `gh issue edit <N> --add-assignee @me --add-label in-progress`, then re-read the
+     issue with `factory_team.py claim verify --repo <owner/name> --issue <N>` (it re-reads via
+     `gh issue view` and applies `decide_claim_winner`). `won` → keep the claim. `lost` → someone
+     else was first: remove your own assignee (`gh issue edit <N> --remove-assignee @me`; also
+     `--remove-label in-progress` only if no assignee remains, since the winner relies on it)
+     and skip.
+   - If a claim was won but the job then cannot start (workspace or setup failure), release it
+     the same way: remove your assignee, and the `in-progress` label if no assignee remains.
 
    Workspace: `git worktree add .worktrees/<id> -b factory/<id> <base>` where `<base>` is
    `main`, or for a stacked job `factory/<blocker-id>` (set `base` on the board). The issue keeps
-   the `in-progress` label from the claim; remove `ready`/`blocked`. Respect `max_parallel` (count jobs in spec/build/review/approve).
+   the `in-progress` label from the claim; remove `ready`/`blocked`.
 3. **Drive every active job one step**, and **issue the Agent calls for all jobs that need one in
    a single message** so independent tickets truly run in parallel. As each agent returns,
    advance only that job; others keep going. Each job's steps:

@@ -24,6 +24,7 @@ from factory_team import (  # noqa: E402
     job_id,
     main,
     markers_from_comments,
+    merge_local_state,
     render_status,
 )
 
@@ -274,6 +275,110 @@ class CliTests(unittest.TestCase):
             self.assertEqual(main(["status", "--repo", "o/r", "--me", "me"]), 1)
         self.assertIn("gh", err.getvalue())
         self.assertEqual(len(err.getvalue().strip().splitlines()), 1)
+
+
+def _job(jid, **kw):
+    j = {"id": jid, "round": 0, "reviews": {}, "rounds": [], "decision": None, "blockedBy": []}
+    j.update(kw)
+    return j
+
+
+class MergeLocalStateTests(unittest.TestCase):
+    def tearDown(self):
+        factory_team.RUN = None
+
+    def test_preserved_fields_survive(self):
+        old = {"jobs": [_job("1-a", round=2, reviews={"ui": "PASS"}, rounds=[{"n": 1}],
+                             decision="APPROVE", blockedBy=["0-x"])]}
+        new = merge_local_state({"jobs": [_job("1-a")]}, old)["jobs"][0]
+        self.assertEqual(new["reviews"], {"ui": "PASS"})
+        self.assertEqual(new["rounds"], [{"n": 1}])
+        self.assertEqual(new["decision"], "APPROVE")
+        self.assertEqual(new["blockedBy"], ["0-x"])
+        self.assertEqual(new["round"], 2)
+
+    def test_round_kept_from_new_when_nonzero(self):
+        new = merge_local_state({"jobs": [_job("1-a", round=3)]}, {"jobs": [_job("1-a", round=1)]})
+        self.assertEqual(new["jobs"][0]["round"], 3)
+
+    def test_job_removed_on_github_disappears_and_new_job_has_defaults(self):
+        old = {"jobs": [_job("1-a", decision="APPROVE"), _job("2-b", decision="ESCALATE")]}
+        new = merge_local_state({"jobs": [_job("2-b"), _job("3-c")]}, old)
+        self.assertEqual([j["id"] for j in new["jobs"]], ["2-b", "3-c"])
+        self.assertEqual(new["jobs"][0]["decision"], "ESCALATE")
+        self.assertIsNone(new["jobs"][1]["decision"])
+
+    def test_corrupt_old_file_is_ignored(self):
+        factory_team.RUN = fake_gh([])
+        with tempfile.TemporaryDirectory() as d:
+            with open(os.path.join(d, "board.json"), "w") as f:
+                f.write("{not json")
+            self.assertEqual(main(["board", "--repo", "o/r", "--out", d, "--me", "x"]), 0)
+            with open(os.path.join(d, "board.json"), encoding="utf-8") as f:
+                self.assertEqual(json.load(f)["jobs"][0]["issue"], 42)
+
+    def test_cli_board_twice_keeps_hand_edited_decision(self):
+        factory_team.RUN = fake_gh([])
+        with tempfile.TemporaryDirectory() as d:
+            path = os.path.join(d, "board.json")
+            main(["board", "--repo", "o/r", "--out", d, "--me", "x"])
+            with open(path, encoding="utf-8") as f:
+                data = json.load(f)
+            data["jobs"][0]["decision"] = "APPROVE"
+            data["jobs"][0]["reviews"] = {"ui": "PASS"}
+            with open(path, "w", encoding="utf-8") as f:
+                json.dump(data, f)
+            main(["board", "--repo", "o/r", "--out", d, "--me", "x"])
+            with open(path, encoding="utf-8") as f:
+                job = json.load(f)["jobs"][0]
+        self.assertEqual(job["decision"], "APPROVE")
+        self.assertEqual(job["reviews"], {"ui": "PASS"})
+
+
+def fake_issue_gh(assignees, labels=()):
+    def run(args):
+        if args[:3] == ["gh", "api", "user"]:
+            return "me\n"
+        if args[:3] == ["gh", "issue", "view"]:
+            return json.dumps({"number": 5, "url": "https://github.com/o/r/issues/5",
+                               "assignees": [{"login": a} for a in assignees],
+                               "labels": [{"name": l} for l in labels]})
+        raise AssertionError(args)
+    return run
+
+
+class ClaimCliTests(unittest.TestCase):
+    def tearDown(self):
+        factory_team.RUN = None
+
+    def _run(self, action, assignees, labels=(), extra=()):
+        factory_team.RUN = fake_issue_gh(assignees, labels)
+        out = io.StringIO()
+        with redirect_stdout(out):
+            rc = main(["claim", action, "--repo", "o/r", "--issue", "5"] + list(extra))
+        self.assertEqual(rc, 0)
+        return out.getvalue().strip()
+
+    def test_check_free(self):
+        self.assertEqual(self._run("check", []), "free")
+
+    def test_check_mine(self):
+        self.assertEqual(self._run("check", ["me"]), "mine")
+
+    def test_check_other(self):
+        self.assertEqual(self._run("check", ["bob"]), "other bob https://github.com/o/r/issues/5")
+
+    def test_check_other_without_assignee(self):
+        self.assertEqual(self._run("check", [], ["in-progress"]),
+                         "other none https://github.com/o/r/issues/5")
+
+    def test_check_me_override(self):
+        self.assertEqual(self._run("check", ["bob"], extra=["--me", "bob"]), "mine")
+
+    def test_verify_won_and_lost(self):
+        self.assertEqual(self._run("verify", ["me", "bob"]), "won")
+        self.assertEqual(self._run("verify", ["bob", "me"]), "lost")
+        self.assertEqual(self._run("verify", []), "lost")
 
 
 def fake_mode_gh(owner_type="Organization", private=True, plan="enterprise", fail_plan=False):

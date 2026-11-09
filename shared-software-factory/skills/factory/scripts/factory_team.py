@@ -229,11 +229,59 @@ def _board_for(args, run: Callable) -> dict:
     return build_board(args.repo, issues, prs, comments, me, now)
 
 
+LOCAL_FIELDS = ("reviews", "rounds", "decision", "blockedBy")
+
+
+def merge_local_state(new_board: dict, old_board: dict) -> dict:
+    """Carry orchestrator-edited fields from the old board into a rebuilt one.
+
+    Only jobs present in both are merged; jobs only in `old_board` are dropped
+    (GitHub is the truth for existence).
+    """
+    old_jobs = {j.get("id"): j for j in (old_board or {}).get("jobs") or [] if isinstance(j, dict)}
+    for job in new_board.get("jobs", []):
+        old = old_jobs.get(job.get("id"))
+        if not old:
+            continue
+        for key in LOCAL_FIELDS:
+            if key in old:
+                job[key] = old[key]
+        if not job.get("round") and old.get("round"):
+            job["round"] = old["round"]
+    return new_board
+
+
+def _load_board(path: str) -> dict:
+    try:
+        with open(path, encoding="utf-8") as f:
+            data = json.load(f)
+    except (OSError, ValueError):
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
 def _write_board(board: dict, out: str) -> None:
     os.makedirs(out, exist_ok=True)
-    with open(os.path.join(out, "board.json"), "w", encoding="utf-8") as f:
+    path = os.path.join(out, "board.json")
+    board = merge_local_state(board, _load_board(path))
+    with open(path, "w", encoding="utf-8") as f:
         json.dump(board, f, indent=2)
         f.write("\n")
+
+
+def _cmd_claim(args, run):
+    me = args.me or run(["gh", "api", "user", "--jq", ".login"]).strip()
+    issue = json.loads(run([
+        "gh", "issue", "view", str(args.issue), "--repo", args.repo,
+        "--json", "number,url,assignees,labels"]))
+    if args.claim_action == "check":
+        c = claim_state(issue, me)
+        if c.state == "other":
+            sys.stdout.write("other %s %s\n" % (c.holder or "none", c.url))
+        else:
+            sys.stdout.write(c.state + "\n")
+    else:
+        sys.stdout.write("won\n" if decide_claim_winner(issue, me) else "lost\n")
 
 
 def _cmd_status(args, run):
@@ -293,6 +341,12 @@ def build_parser() -> argparse.ArgumentParser:
         if name != "status":
             p.add_argument("--out", default="factory", help="output directory (default: factory)")
         p.set_defaults(handler=handler)
+    p = sub.add_parser("claim", help="check or verify the claim on an issue")
+    p.add_argument("claim_action", choices=("check", "verify"))
+    p.add_argument("--repo", required=True, help="OWNER/NAME")
+    p.add_argument("--issue", required=True, type=int)
+    p.add_argument("--me", help="GitHub login (default: gh api user)")
+    p.set_defaults(handler=_cmd_claim)
     p = sub.add_parser("mode", help="print the dashboard mode: pages|projects|ask")
     p.add_argument("--repo", required=True, help="OWNER/NAME")
     p.set_defaults(handler=_cmd_mode)
