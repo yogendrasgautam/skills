@@ -16,12 +16,19 @@
 #         gh project view N --owner OWNER --format json              # .id
 #         gh project field-list N --owner OWNER --format json        # Stage .id, .options[].id
 #         gh project item-list N --owner OWNER --format json         # items[].id, .content.number
+#   - The token is exposed ONLY to the "Move cards by stage" step; reads use github.token.
 #   - The helper is committed at .factory/factory_team.py (installed by the factory).
+# Security: this workflow uses pull_request_target so it runs in the context of the
+# base repository. NEVER check out the PR head (github.event.pull_request.head.*) here:
+# every checkout pins ref to the default branch so only reviewed code from the default
+# branch (.factory/factory_team.py) is ever executed. The same ref is used for the
+# issues, issue_comment, schedule and workflow_dispatch runs.
 name: factory-dashboard
 
 on:
   issues:
-  pull_request:
+  pull_request_target:
+    types: [opened, reopened, closed, synchronize, labeled, unlabeled]
   issue_comment:
   workflow_dispatch:
   schedule:
@@ -40,14 +47,15 @@ jobs:
   sync:
     runs-on: ubuntu-latest
     env:
-      GH_TOKEN: ${{ secrets.FACTORY_PROJECT_TOKEN }}
       PROJECT_NUMBER: ${{ vars.FACTORY_PROJECT_NUMBER }}
       OWNER: ${{ github.repository_owner }}
     steps:
       - name: Check project token
         id: gate
+        env:
+          PROJECT_TOKEN: ${{ secrets.FACTORY_PROJECT_TOKEN }}
         run: |
-          if [ -z "$GH_TOKEN" ] || [ -z "$PROJECT_NUMBER" ]; then
+          if [ -z "$PROJECT_TOKEN" ] || [ -z "$PROJECT_NUMBER" ]; then
             echo "::warning::FACTORY_PROJECT_TOKEN secret or FACTORY_PROJECT_NUMBER variable is not set; skipping Projects sync."
             echo "run=false" >> "$GITHUB_OUTPUT"
           else
@@ -55,15 +63,21 @@ jobs:
           fi
       - uses: actions/checkout@v4.2.2
         if: steps.gate.outputs.run == 'true'
+        with:
+          ref: ${{ github.event.repository.default_branch }}
       - uses: actions/setup-python@v5.3.0
         if: steps.gate.outputs.run == 'true'
         with:
           python-version: "3.12"
       - name: Build board
         if: steps.gate.outputs.run == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: python3 .factory/factory_team.py board --repo ${{ github.repository }} --out factory
       - name: Move cards by stage
         if: steps.gate.outputs.run == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.FACTORY_PROJECT_TOKEN }}
         run: |
           set -euo pipefail
           project_id=$(gh project view "$PROJECT_NUMBER" --owner "$OWNER" --format json --jq .id)
@@ -83,7 +97,7 @@ jobs:
               echo "::warning::No Stage option named '$stage' (issue #$number)"
               continue
             fi
-            item_id=$(jq -r --argjson n "$number" '.items[] | select(.content.number == $n) | .id' <<<"$items" | head -n1)
+            item_id=$(jq -r --argjson n "$number" --arg u "$url" '.items[] | select(.content.number == $n and .content.url == $u) | .id' <<<"$items" | head -n1)
             if [ -z "$item_id" ]; then
               item_id=$(gh project item-add "$PROJECT_NUMBER" --owner "$OWNER" --url "$url" --format json --jq .id)
             fi
