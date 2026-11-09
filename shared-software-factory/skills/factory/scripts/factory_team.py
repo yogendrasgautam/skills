@@ -107,8 +107,8 @@ def _pick_pr(number: int, prs: list):
             reverse=True,
         )
         if group:
-            others = ", ".join("#%d" % p["number"] for p in group[1:])
-            note = "also open PRs: " + others if others else ""
+            others = ", ".join("[#%d](%s)" % (p["number"], p.get("url", "")) for p in group[1:])
+            note = "other PRs: " + others if others else ""
             return group[0], note
     return None, ""
 

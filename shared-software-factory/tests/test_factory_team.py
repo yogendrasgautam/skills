@@ -165,6 +165,7 @@ class FactoryTeamBoard(unittest.TestCase):
         row = build_board("o/r", [gh_issue()], prs, {}, "me", NOW)["jobs"][0]
         self.assertEqual(row["pr"], 58)
         self.assertIn("#57", row["note"])
+        self.assertIn("[#57](https://github.com/o/r/pull/57)", row["note"])
 
     def test_merged_pr_gives_merged_row(self):
         i = gh_issue(state="CLOSED", labels=("factory", "in-progress"), assignees=["bob"])
@@ -194,7 +195,9 @@ class FactoryTeamBoard(unittest.TestCase):
         self.assertIn("[#42](https://github.com/o/r/issues/42)", out)
         self.assertIn("[#57](https://github.com/o/r/pull/57)", out)
         self.assertIn("(stale)", out)
-        self.assertIn("| — |", out)
+        self.assertIn(
+            "| 7-other | blocked | — | [#7](https://github.com/o/r/issues/7) | — |  |", out
+        )
 
 
 if __name__ == "__main__":
