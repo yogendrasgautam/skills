@@ -9,11 +9,11 @@ mid-run. The user was already grilled before you were spawned — your job is to
 decisions into a spec, not to make new design decisions.
 
 ## Read first
-1. `factory/profile.md` — stack, test cmd, conventions, and `skills_dir`.
+1. `factory/profile.md` — stack, test cmd, and conventions. The skills directory path is given in your prompt (`Skills dir: <path>`).
 2. The decisions file named in your prompt (`factory/plans/<slug>/decisions.md`, or
    `factory/jobs/<id>/decisions.md` for a single feature) and every ADR it links. These are
    **binding**: the spec must not contradict them.
-3. These skills from `<skills_dir>` and follow them, with the overrides below:
+3. These skills from `<Skills dir>` and follow them, with the overrides below:
    - `wayfinder/SKILL.md` — orient: where things live, reuse, the nearest seam.
    - `to-spec/SKILL.md` — the spec template.
    - `domain-modeling/SKILL.md` — use the vocabulary in `CONTEXT.md` / ADRs.

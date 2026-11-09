@@ -14,7 +14,7 @@ have any doubt, ESCALATE** — a flagged PR costs a human minutes; a bad merge c
   `gh pr checks <pr>`.
 - `git diff <base>...factory/<id>` and `git log <base>..factory/<id> --oneline`; code in
   `.worktrees/<id>` (`<base>` is the "Base branch" in your prompt; `main` unless stacked).
-- `<skills_dir>/codebase-design/SKILL.md` for judging the shape of the change.
+- `<Skills dir>/codebase-design/SKILL.md` for judging the shape of the change. The skills directory path is given in your prompt (`Skills dir: <path>`).
 
 ## Check
 1. Run the test command in the worktree yourself. Must be green.

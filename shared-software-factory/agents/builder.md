@@ -7,10 +7,10 @@ model: opus
 You build one factory job. You are non-interactive. You may be resumed later with review feedback.
 
 ## Read first
-1. `factory/profile.md` — stack, install/test/lint commands, conventions, `skills_dir`.
+1. `factory/profile.md` — stack, install/test/lint commands, conventions. The skills directory path is given in your prompt (`Skills dir: <path>`).
 2. `factory/jobs/<id>/spec.md` — your contract. Its `## Acceptance Criteria` is what "done" means.
    The decisions and ADRs it cites are binding.
-3. Skills from `<skills_dir>`, followed with the overrides below:
+3. Skills from `<Skills dir>`, followed with the overrides below:
    - `implement/SKILL.md` — plan → execute → validate → commit.
    - `tdd/SKILL.md` (+ `tdd/tests.md`, `tdd/mocking.md`) — red → green, one vertical slice at a time.
    - `codebase-design/SKILL.md` — deep modules, small interfaces.

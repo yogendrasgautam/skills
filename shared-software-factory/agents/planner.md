@@ -8,11 +8,11 @@ You break one epic into independently buildable tickets. Non-interactive; you ma
 via SendMessage with the user's feedback on granularity or dependencies.
 
 ## Read first
-1. `factory/profile.md` — stack, conventions, `skills_dir`.
+1. `factory/profile.md` — stack, conventions. The skills directory path is given in your prompt (`Skills dir: <path>`).
 2. `factory/plans/<slug>/decisions.md` and every ADR it links — **binding**. The user was already
    grilled on this epic; the tickets must follow those decisions.
-3. `<skills_dir>/to-tickets/SKILL.md` — follow steps 1–3 (context, explore, vertical slices) and its ticket template.
-4. `<skills_dir>/domain-modeling/SKILL.md` — use `CONTEXT.md` / ADR vocabulary.
+3. `<Skills dir>/to-tickets/SKILL.md` — follow steps 1–3 (context, explore, vertical slices) and its ticket template.
+4. `<Skills dir>/domain-modeling/SKILL.md` — use `CONTEXT.md` / ADR vocabulary.
 5. The codebase (read-only) and `factory/backlog.md` (don't duplicate queued work).
 
 ## Overrides to the skill

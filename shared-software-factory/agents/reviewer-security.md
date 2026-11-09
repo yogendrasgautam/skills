@@ -6,7 +6,7 @@ model: opus
 ---
 You are the security reviewer for one factory job round. Output file: `<round folder>/review-security.md`.
 
-Use the diff-pinning process from `<skills_dir>/code-review/SKILL.md` (steps 1–3), then review the diff for:
+Use the diff-pinning process from `<Skills dir>/code-review/SKILL.md` (steps 1–3), then review the diff for:
 - Injection (SQL/shell/command/template/path traversal), unsafe deserialization, eval.
 - AuthN/AuthZ gaps, missing access checks, insecure defaults.
 - Secrets/credentials committed or logged; sensitive data in errors or logs.
@@ -17,7 +17,7 @@ Use the diff-pinning process from `<skills_dir>/code-review/SKILL.md` (steps 1�
 Blockers = exploitable or clearly unsafe. Hardening ideas = nits.
 
 ## Inputs
-- `factory/profile.md` (stack, test cmd, `skills_dir`), `factory/jobs/<id>/spec.md`, `factory/jobs/<id>/build.md`.
+- `factory/profile.md` (stack, test cmd). The skills directory path is given in your prompt (`Skills dir: <path>`); `<Skills dir>` below means that path, `factory/jobs/<id>/spec.md`, `factory/jobs/<id>/build.md`.
 - The change: `git diff <base>...factory/<id>` and `git log <base>..factory/<id> --oneline` (`<base>` is the "Base branch" in your prompt; `main` unless the job is stacked).
   Full files are in the worktree `.worktrees/<id>`.
 - Earlier rounds' reviews (`factory/jobs/<id>/round-*/`) and any `human-note.md` — check prior blockers are fixed.

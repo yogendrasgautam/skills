@@ -141,6 +141,85 @@ class SkillRulesTest(unittest.TestCase):
         rule = self.text[self.text.index("5. GitHub is the board"):self.text.index("## Files")]
         self.assertIn("`approve` / `rework`", rule)
 
+    # ---- Task 7: committed setup ----
+    def setup_block(self) -> str:
+        return self.section("### `setup` (also run automatically when `factory/profile.md` is missing)")
+
+    def test_setup_selects_mode(self):
+        block = self.setup_block()
+        self.assertIn("factory_team.py mode --repo", block)
+        self.assertIn("AskUserQuestion", block)
+        self.assertIn("Enterprise Cloud", block)
+        self.assertIn("never gets pages", block)
+
+    def test_setup_ships_shared_config_via_setup_pr(self):
+        block = self.setup_block()
+        self.assertIn("pull request", block)
+        self.assertIn("factory/setup", block)
+        for needle in (".claude/settings.json", ".factory/profile.md", ".factory/factory_team.py",
+                       ".github/workflows/factory-dashboard.yml", "yogendrasgautam/skills",
+                       "shared-software-factory@engineering-skills", "profile.shared.md"):
+            self.assertIn(needle, block)
+
+    def test_setup_projects_mode_steps(self):
+        block = self.setup_block()
+        self.assertIn("gh project create", block)
+        self.assertIn("gh project field-create", block)
+        self.assertIn("blocked,spec,build,review,approve,pr-open,needs-human,merged", block)
+        self.assertIn("FACTORY_PROJECT_TOKEN", block)
+        self.assertIn("gh variable set FACTORY_PROJECT_NUMBER", block)
+        self.assertIn("gh secret set FACTORY_PROJECT_TOKEN", block)
+
+    def test_setup_pages_mode_manual_settings(self):
+        block = self.setup_block()
+        self.assertIn("Settings -> Pages", block)
+        self.assertIn("GitHub Actions", block)
+
+    def test_setup_second_developer_does_not_overwrite(self):
+        block = self.setup_block()
+        self.assertIn("Second developer", block)
+        self.assertIn("must NOT regenerate or overwrite", block)
+
+    def test_setup_skills_dir_never_stored(self):
+        block = self.setup_block()
+        self.assertIn("skills_dir` is never stored", block)
+        self.assertIn("${CLAUDE_SKILL_DIR}/library", block)
+        self.assertNotIn("skills_dir: <abs", block)
+
+    def test_profile_shared_template(self):
+        path = os.path.join(os.path.dirname(SKILL), "templates", "profile.shared.md")
+        with open(path, encoding="utf-8") as f:
+            text = f.read()
+        self.assertNotIn("skills_dir", text)
+        self.assertNotIn("C:\\", text)
+        for line in text.splitlines():
+            self.assertFalse(line.strip().startswith("/"), line)
+        for key in ("stack:", "install:", "test:", "lint:", "has_ui:", "max_parallel:", "conventions:"):
+            self.assertIn(key, text)
+
+    def test_agent_spawn_prompts_carry_skills_dir(self):
+        prompts = [l for l in self.text.splitlines()
+                   if "Spawn" in l or l.strip().startswith("`Job <id>") or l.strip().startswith("`Epic:")]
+        carried = [l for l in self.text.splitlines() if "Skills dir: ${CLAUDE_SKILL_DIR}/library" in l]
+        # planner, spec-writer, builder, reviewers, approver
+        self.assertGreaterEqual(len(carried), 5)
+        self.assertIn("absolute path resolved", self.text)
+        for needle in ("`Epic: \"<epic>\". Skills dir:", "Ticket: factory/jobs/<id>/ticket.md (GitHub #<N>). Skills dir:",
+                       "Base branch <base>, issue #<N>. Skills dir:", "Round folder factory/jobs/<id>/round-N/. Skills dir:",
+                       "Rounds 1..N. Skills dir:"):
+            self.assertIn(needle, self.text)
+
+    def test_agents_do_not_read_skills_dir_from_profile(self):
+        agents = os.path.join(os.path.dirname(SKILL), "..", "..", "agents")
+        names = [n for n in os.listdir(agents) if n.endswith(".md")]
+        self.assertTrue(names)
+        for n in names:
+            with open(os.path.join(agents, n), encoding="utf-8") as f:
+                text = f.read()
+            self.assertNotIn("skills_dir", text, n)
+            if "Skills dir" in text or "skills dir" in text:
+                self.assertIn("given in your prompt", text, n)
+
 
 if __name__ == "__main__":
     unittest.main()

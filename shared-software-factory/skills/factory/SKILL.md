@@ -77,7 +77,7 @@ Agents ship in this plugin and are namespaced `shared-software-factory:<name>` �
 ## Files
 
 ```
-factory/profile.md                    repo profile: stack, test cmd, conventions, skills_dir, max_parallel
+factory/profile.md                    local copy of .factory/profile.md: stack, test cmd, conventions, max_parallel (no skills_dir)
 factory/board.json                    per-clone cache of the board (rebuilt from GitHub by factory_team.py; the dashboard reads it)
 factory/backlog.md                    local mirror of ready tickets (you write it)
 factory/plans/<slug>/decisions.md     grilling output (you)        — binding for planner/spec-writer
@@ -133,35 +133,63 @@ but never yours to drive. Each job also carries `issueUrl` (and a PR URL) for li
    commit and (after the user supplies/creates the GitHub remote) push `main` — the only direct
    push the factory ever does. Otherwise ensure branch `main` exists and the main checkout is
    clean outside `factory/`; other dirt → ask the user to commit/stash first.
-2. Scaffold (skip files that already exist — never overwrite project state):
+2. **Second developer.** Run `git fetch origin`, then `git cat-file -e origin/main:.factory/profile.md`.
+   If it exists (or the `factory/setup` pull request is already merged), the repo is already set
+   up: setup must NOT regenerate or overwrite `.factory/profile.md`, the workflow, the helper or
+   `.claude/settings.json`. Do only step 3 (local cache), then write the local
+   `factory/profile.md` from `.factory/profile.md` (copy it as is; `skills_dir` is never stored),
+   check the skills dir (step 6), and stop. Everything below is for the first setup of a repo
+   (or a re-run after a plugin update, which only re-copies the helper, see step 5).
+3. Local cache (skip files that already exist — never overwrite project state):
    - copy `${CLAUDE_PLUGIN_ROOT}/skills/factory/templates/{dashboard.html,board.json,backlog.md,README.md}`
      into `factory/`, and `mkdir -p factory/jobs factory/plans`;
    - append `factory/` and `.worktrees/` to `.git/info/exclude` if missing (local-only, no commit);
    - create the labels (idempotent, `gh label create <name> --force`): `factory`, `epic`,
      `ready`, `blocked`, `in-progress`, `factory-approved`, `needs-human-review`;
    - `dashboard.html` is refreshed from the template on every setup (it holds no state);
-   - offer (AskUserQuestion) a `.claude/settings.json` that prompts teammates to install this
-     plugin. If accepted, ship it as a PR from branch `factory/setup` and **flag it for human
-     review** (it is config) — never commit it to `main`.
-3. Skills dir is the bundled library: `${CLAUDE_SKILL_DIR}/library` (resolve to an absolute path).
-   Check it has `grilling`, `grill-with-docs`, `to-spec`, `implement`, `tdd`, `code-review`,
-   `to-tickets`, `domain-modeling`. Missing → the plugin install is broken; stop and say so.
-4. Inspect the repo (manifest files, test dirs, lint configs, README/CONTRIBUTING/CLAUDE.md,
-   CONTEXT.md, docs/adr) and write `factory/profile.md`:
-   ```
-   # Repo profile
-   skills_dir: <abs path from step 3>
-   repo: <owner/name>
-   stack: <language/framework, or "undecided" if no app code yet>
-   install: <cmd or none>
-   test: <cmd, or "undecided">
-   lint: <cmd or none>
-   has_ui: <yes|no|undecided>
-   max_parallel: 3
-   conventions: <bullets: layout, naming, test style, standards docs found>
-   ```
+   - build the board: `python3 ${CLAUDE_SKILL_DIR}/scripts/factory_team.py board --repo <owner/name> --out factory`.
+4. **Dashboard mode.** Run `python3 ${CLAUDE_SKILL_DIR}/scripts/factory_team.py mode --repo <owner/name>`;
+   it prints `pages`, `projects` or `ask`. On `ask`, use AskUserQuestion: "Which GitHub plan is
+   this repo on?" with options Enterprise Cloud / Team / Free or Pro. Enterprise Cloud → `pages`;
+   Team and Free or Pro → `projects`. A private repo on Free, Pro or Team never gets pages
+   (Pages access control needs Enterprise Cloud), so say so and use `projects`.
+   - `pages`: tell the user to enable Pages in Settings -> Pages with source "GitHub Actions" and
+     to set access to private / repo members (Enterprise Cloud only). That setting is not
+     scriptable reliably, so the user does it by hand.
+   - `projects`: create the Project and its `Stage` field (the owner is the repo owner; verify
+     with `gh project <cmd> --help` if a command errors):
+     `gh project create --owner <owner> --title "Factory"` (note the project number `<n>` it prints), then
+     `gh project field-create <n> --owner <owner> --name Stage --data-type SINGLE_SELECT --single-select-options "blocked,spec,build,review,approve,pr-open,needs-human,merged"`
+     (the option names must be exactly those eight stages), then store the number with
+     `gh variable set FACTORY_PROJECT_NUMBER --body <n>`. Tell the user to create a token with the
+     `project` scope and add it with `gh secret set FACTORY_PROJECT_TOKEN`; the factory never asks
+     for, reads or prints the token value. Until the secret exists the workflow exits 0 with a warning.
+5. **Ship the shared config** as one pull request from branch `factory/setup` (worktree
+   `git worktree add .worktrees/setup -b factory/setup main`, commit there, `git push -u origin
+   factory/setup`, `gh pr create --base main`), then **flag it for human review**
+   (see "Flagging") — it is config, never committed to `main`, never merged by you. It contains:
+   - `.claude/settings.json` — offer it first with AskUserQuestion. If accepted, it prompts
+     teammates to install this plugin: marketplace `yogendrasgautam/skills`, plugin
+     `shared-software-factory@engineering-skills`;
+   - `.factory/profile.md` — generated in step 7 from `${CLAUDE_PLUGIN_ROOT}/skills/factory/templates/profile.shared.md`;
+   - `.factory/factory_team.py` — a copy of `${CLAUDE_SKILL_DIR}/scripts/factory_team.py`, re-copied on
+     every setup re-run so it tracks the plugin version;
+   - the ONE workflow matching the mode, copied from
+     `${CLAUDE_PLUGIN_ROOT}/skills/factory/templates/workflows/factory-dashboard-<mode>.yml` to
+     `.github/workflows/factory-dashboard.yml` (`pages` or `projects`, never both).
+   Print the PR as a link and the manual steps still open (Pages settings, or the token secret).
+6. Skills dir is the bundled library: `${CLAUDE_SKILL_DIR}/library`. Resolve it to an absolute path
+   on every run; `skills_dir` is never stored in any profile or file. Check it has `grilling`,
+   `grill-with-docs`, `to-spec`, `implement`, `tdd`, `code-review`, `to-tickets`,
+   `domain-modeling`. Missing → the plugin install is broken; stop and say so.
+7. Inspect the repo (manifest files, test dirs, lint configs, README/CONTRIBUTING/CLAUDE.md,
+   CONTEXT.md, docs/adr), fill in `templates/profile.shared.md` (fields: repo, stack, install,
+   test, lint, has_ui, max_parallel, conventions — no `skills_dir`, no absolute paths), write it to
+   `.factory/profile.md` (in the `factory/setup` worktree, for the PR in step 5) and copy it to the
+   local `factory/profile.md`.
    Empty repo → `stack: undecided`; the grilling picks the stack, the first ticket scaffolds it,
-   and you re-run setup after that ticket merges. Re-run setup after a plugin update.
+   and you re-run setup after that ticket merges (a new PR updates `.factory/profile.md`). Re-run
+   setup after a plugin update to refresh `.factory/factory_team.py`.
 
 ### Grill (used by `plan` and `<feature>`)
 
@@ -184,7 +212,7 @@ Before any spec or ticket exists, run the `grill-with-docs` skill **yourself, in
 ### `plan <epic>` — grill → breakdown → GitHub
 
 1. Ensure setup. Run **Grill**.
-2. Spawn `planner` (name it `planner-<slug>`): `Epic: "<epic>". Decisions: factory/plans/<slug>/decisions.md. Write factory/plans/<slug>/plan.md.`
+2. Spawn `planner` (name it `planner-<slug>`): `Epic: "<epic>". Skills dir: ${CLAUDE_SKILL_DIR}/library (absolute path resolved). Decisions: factory/plans/<slug>/decisions.md. Write factory/plans/<slug>/plan.md.`
    Reply `OPEN QUESTIONS` → grill the user on exactly those (append to decisions.md), then
    `SendMessage` the planner to continue.
 3. Show the breakdown as a numbered list (title · blocked by · ACs count) and mark which tickets
@@ -254,20 +282,20 @@ Repeat until nothing is runnable or in flight (`next` = at most one new job):
    advance only that job; others keep going. Each job's steps:
 
    **Spec.** Stage `spec`. Write the issue body to `factory/jobs/<id>/ticket.md`. Spawn
-   `spec-writer`: `Job <id>. Decisions: factory/plans/<slug>/decisions.md. Ticket: factory/jobs/<id>/ticket.md (GitHub #<N>). Write factory/jobs/<id>/spec.md.`
+   `spec-writer`: `Job <id>. Decisions: factory/plans/<slug>/decisions.md. Ticket: factory/jobs/<id>/ticket.md (GitHub #<N>). Skills dir: ${CLAUDE_SKILL_DIR}/library (absolute path resolved). Write factory/jobs/<id>/spec.md.`
    - `OPEN QUESTIONS` in spec.md → pause **that job only**, grill the user on them (append to
      decisions.md, ADR if warranted via a docs PR), re-run the spec-writer.
    - No `## Acceptance Criteria` otherwise → flag.
    - Post spec.md on the issue as a comment starting `<!-- factory:spec -->` (edit the same
      comment on re-runs).
 
-   **Build.** Stage `build`. Spawn `builder` named `builder-<id>`: `Job <id>. Branch factory/<id>, worktree .worktrees/<id>, Base branch <base>, issue #<N>. Read factory/jobs/<id>/spec.md, build it in the worktree, push, open the PR against <base>, write factory/jobs/<id>/build.md.`
+   **Build.** Stage `build`. Spawn `builder` named `builder-<id>`: `Job <id>. Branch factory/<id>, worktree .worktrees/<id>, Base branch <base>, issue #<N>. Skills dir: ${CLAUDE_SKILL_DIR}/library (absolute path resolved). Read factory/jobs/<id>/spec.md, build it in the worktree, push, open the PR against <base>, write factory/jobs/<id>/build.md.`
    Record the PR number on the board. Builder reports a push/PR failure → flag. Then post
    build.md on the issue as the `build` comment (see "Posting shared history").
 
    **Review round N** (start N=1). `mkdir -p factory/jobs/<id>/round-N`; stage `review`; append
    `{n:N, reviews: all "pending"}`. Spawn **all four reviewers in one message**, each with:
-   `Job <id>. Branch factory/<id>, worktree .worktrees/<id>, Base branch <base>. Round folder factory/jobs/<id>/round-N/. Write your review there.`
+   `Job <id>. Branch factory/<id>, worktree .worktrees/<id>, Base branch <base>. Round folder factory/jobs/<id>/round-N/. Skills dir: ${CLAUDE_SKILL_DIR}/library (absolute path resolved). Write your review there.`
    As each returns read the first line of its file and set its chip (PASS / CHANGES).
    **WAIT FOR ALL four** — never message the builder mid-round. A missing file or first line that
    isn't `VERDICT: PASS`/`VERDICT: CHANGES` → re-spawn just that reviewer once; still bad → CHANGES.
@@ -279,7 +307,7 @@ Repeat until nothing is runnable or in flight (`next` = at most one new job):
      plus "read build.md for your previous work".) Then review round N+1.
    - Any CHANGES and N = MAX_ROUNDS → **flag**: "reviews still CHANGES after N rounds".
 
-   **Approve.** All four PASS → stage `approve`. Spawn `approver`: `Job <id>. Branch factory/<id>, worktree .worktrees/<id>, Base branch <base>, PR #<pr>. Rounds 1..N. Write factory/jobs/<id>/decision.md.`
+   **Approve.** All four PASS → stage `approve`. Spawn `approver`: `Job <id>. Branch factory/<id>, worktree .worktrees/<id>, Base branch <base>, PR #<pr>. Rounds 1..N. Skills dir: ${CLAUDE_SKILL_DIR}/library (absolute path resolved). Write factory/jobs/<id>/decision.md.`
    Post decision.md on the issue as the `decision` comment (see "Posting shared history"), then
    read its first word:
    - `APPROVE` → add label `factory-approved` to the PR, set decision `APPROVE`, stage `pr-open`,
