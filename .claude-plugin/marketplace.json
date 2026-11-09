@@ -24,6 +24,13 @@
       "description": "A hands-off software factory: role agents take a feature from spec to merged branch (spec → build → 4 parallel reviews → approve), using the engineering-pipeline skills, with a live dashboard.",
       "version": "0.3.0",
       "category": "Engineering"
+    },
+    {
+      "name": "shared-software-factory",
+      "source": "./shared-software-factory",
+      "description": "Team-shared software factory: GitHub-backed board, ticket claims and a shared dashboard for several developers.",
+      "version": "0.1.0",
+      "category": "Engineering"
     }
   ]
 }
