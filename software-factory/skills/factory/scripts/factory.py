@@ -519,6 +519,19 @@ def cmd_halt(a, d):
     print("halted: %s" % board["halt"] if board["halt"] else "halt cleared")
 
 
+def cmd_repo(a, d):
+    """Record the GitHub "owner/name"; the dashboard builds issue and PR links from it."""
+    board = load(d)
+    if a.name is None:
+        print(board.get("repo") or "no repo set")
+        return
+    if not re.match(r"^[\w.-]+/[\w.-]+$", a.name):
+        raise Fail(1, "repo must be owner/name, got %r" % a.name)
+    board["repo"] = a.name
+    save(d, board)
+    print("repo: %s" % a.name)
+
+
 def cmd_stuck(a, d):
     board = load(d)
     cutoff = time.time() - a.minutes * 60
@@ -820,6 +833,10 @@ def build_parser():
     s.add_argument("action", choices=("set", "clear", "status"))
     s.add_argument("reason", nargs="?")
     s.set_defaults(fn=cmd_halt)
+
+    s = sub.add_parser("repo", help="set/show the GitHub owner/name (dashboard links)")
+    s.add_argument("name", nargs="?")
+    s.set_defaults(fn=cmd_repo)
 
     s = sub.add_parser("stuck", help="active jobs with no state change for N minutes")
     s.add_argument("--minutes", type=int, default=60)

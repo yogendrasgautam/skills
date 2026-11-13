@@ -1,6 +1,6 @@
 {
   "name": "shared-software-factory",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "The team-shared variant of the software factory (/shared-software-factory:factory): a GitHub-backed board, ticket claims and a shared dashboard so several developers can run the grill, build, review (including an adversarial reviewer that tries to break each change), UX-test and approve pipeline together (UI changes are run locally and get before/after screenshots on the PR).",
   "author": {
     "name": "Yogendra Gautam"
