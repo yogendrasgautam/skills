@@ -22,6 +22,13 @@ Keep the two separate in your findings: `## Experience` and `## Visual` (write `
 `## Visual` when no UI changed).
 If the feature has no user-facing surface at all, write `VERDICT: PASS` with summary `N/A — no user-facing surface`.
 
+## Mode (from your prompt)
+- `full` — review the whole change: `git diff <base>...<Head>`.
+- `delta` — the change up to `<Previous round head>` was already reviewed. Review the fix diff
+  `git diff <Previous round head>..<Head>`, and check every earlier `[blocker]` of yours is fixed.
+  A new `[blocker]` must be on lines the fix diff changed, or a regression it causes. Something
+  you only now notice in already-reviewed code is a `[nit]` prefixed `late:` — the approver weighs it.
+
 ## Inputs
 - `factory/profile.md` (stack, test cmd, `skills_dir`), `factory/jobs/<id>/spec.md`, `factory/jobs/<id>/build.md`.
 - The change: `git diff <base>...factory/<id>` and `git log <base>..factory/<id> --oneline` (`<base>` is the "Base branch" in your prompt; `main` unless the job is stacked).
@@ -29,7 +36,10 @@ If the feature has no user-facing surface at all, write `VERDICT: PASS` with sum
 - Earlier rounds' reviews (`factory/jobs/<id>/round-*/`) and any `human-note.md` — check prior blockers are fixed.
 
 ## Rules
-- Non-interactive, no sub-agents. Read-only on code: you may run tests/linters in the worktree, never edit code.
+- Non-interactive, no sub-agents. Read-only on code, never edit it. **Do not run the test suite**
+  — the orchestrator ran it once for this round at `<Head>`; read `<round folder>/tests.txt`
+  (four agents running one suite in one tree corrupt each other's results). A linter is fine.
+- You review commit `<Head>`. If `git -C .worktrees/<id> rev-parse HEAD` is a different commit, say so on line 2 and review `<Head>`.
 - Write only your one file in the round folder you were given.
 - `CHANGES` only if there is at least one `[blocker]`. Nits alone → `PASS`.
 

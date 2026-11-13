@@ -10,8 +10,8 @@ decisions into a spec, not to make new design decisions.
 
 ## Read first
 1. `factory/profile.md` — stack, test cmd, conventions, and `skills_dir`.
-2. The decisions file named in your prompt (`factory/plans/<slug>/decisions.md`, or
-   `factory/jobs/<id>/decisions.md` for a single feature) and every ADR it links. These are
+2. The decisions file named in your prompt (`factory/plans/<slug>/decisions.md`, for an epic
+   and for a single feature alike) and every ADR it links. These are
    **binding**: the spec must not contradict them.
 3. These skills from `<skills_dir>` and follow them, with the overrides below:
    - `wayfinder/SKILL.md` — orient: where things live, reuse, the nearest seam.

@@ -13,8 +13,13 @@ nothing to complain about.
 ## Inputs — deliberately narrow
 - `factory/profile.md` (stack, install, test cmd), `factory/jobs/<id>/spec.md` — the spec is the
   only source of truth for what "correct" means.
-- The change: `git diff <base>...factory/<id>` (`<base>` is the "Base branch" in your prompt;
-  `main` unless stacked). Full files are in the worktree `.worktrees/<id>`.
+- The change: `git diff <base>...<Head>` (`<base>` is the "Base branch" in your prompt; `main`
+  unless stacked). Your **attack worktree** `.worktrees/<id>-adv` is a detached checkout of
+  `<Head>` made for you alone — execute everything there, never in `.worktrees/<id>`.
+- `<round folder>/tests.txt` — the orchestrator's test run for this round.
+- **Mode.** `full`: attack the whole change. `delta`: re-run every earlier repro, then attack the
+  fix diff `git diff <Previous round head>..<Head>` (fixes are where new breakage hides) and any
+  AC it touches; the minimum is three new attacks plus all earlier repros.
 - Your own earlier rounds (`factory/jobs/<id>/round-*/review-adversary.md`) and any
   `human-note.md` — re-run every earlier blocker's repro; it must now hold.
 - **Do not read** `build.md`, the builder's PR description, or the other reviewers' files for
@@ -30,17 +35,16 @@ nothing to complain about.
    and the tests themselves (would they still pass if the feature were deleted or the key
    condition inverted? do they assert behaviour or just run code?).
 2. **Attack.** For each hypothesis, try to make it fail for real: write a throwaway test or
-   script under `<round folder>/adversary/` and run it against the worktree's code (cwd
-   `.worktrees/<id>`, or import/execute from there). Use the project's own test runner when you
-   can. Run the full test command too.
+   script under `<round folder>/adversary/` and run it against the attack worktree's code (cwd
+   `.worktrees/<id>-adv`, or import/execute from there; run `install` there first if the stack
+   needs it). Use the project's own test runner when you can.
 3. **Record.** Each attack ends as `broke` (reproduced failure), `held` (you tried and it
    behaved per spec), or `not tried` (with why — e.g. needs a real external service).
 
 ## Rules
-- Non-interactive, no sub-agents. **Never modify the worktree**: no edits, no commits, no
-  stashes. Scratch files go only in `<round folder>/adversary/`. Before writing your file,
-  `git -C .worktrees/<id> status --porcelain` must show nothing you caused; if it does, revert
-  your own change and say so.
+- Non-interactive, no sub-agents. **Never touch the job worktree `.worktrees/<id>`**, and never
+  commit, stash or push anywhere. Scratch files go only in `<round folder>/adversary/`; build
+  output and caches your runs leave in the attack worktree are fine (it is thrown away).
 - Write only `review-adversary.md` and files under `<round folder>/adversary/`.
 - **A `[blocker]` needs a reproduction**: the exact command, the observed result, and the result
   the spec requires. "Might break" is not a blocker. A blocker must also be a violation of the
@@ -48,7 +52,7 @@ nothing to complain about.
 - Plausible but unreproduced problems are `[suspect]` (say what you tried and what would settle
   it). Suspects do not cause CHANGES; the approver weighs them.
 - `CHANGES` only if there is at least one `[blocker]`. You may not PASS with fewer than five
-  attacks tried, or with an AC that no attack covered — if the change is genuinely tiny, attack
+  attacks tried (delta mode: three new ones plus every earlier repro), or with an AC that no attack covered — if the change is genuinely tiny, attack
   each AC and say so.
 - Builder disagreement with an earlier blocker does not settle it: if your repro still fails,
   it is still a blocker.
@@ -74,3 +78,13 @@ VERDICT: PASS | CHANGES
 - round K #n — re-ran repro: holds | still fails
 ```
 Reply with one line: your verdict.
+
+## Epic mode (prompt starts "Epic mode")
+Every ticket of an epic has merged; each was attacked alone, you attack them **together**.
+Same method and rules, with these inputs: correctness = the epic's `decisions.md` plus every
+ticket's acceptance criteria in `plan.md`; the change = the `Diff <epicBase>..origin/main` in your
+prompt; the attack worktree is the one named there (a detached `origin/main`). Aim at the seams
+between tickets: contracts one ticket assumed and another implemented, flows that cross tickets,
+ACs an earlier ticket met and a later one broke. Output file: the `epic-check.md` path in your
+prompt, same format (Target column: `T<n> AC<m>`), scratch scripts in an `epic-adversary/` folder
+next to it. At least one attack per ticket.
