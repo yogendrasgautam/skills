@@ -10,7 +10,7 @@ class PluginIdentity(unittest.TestCase):
     def test_manifest_name_and_version(self):
         manifest = json.loads((PLUGIN / ".claude-plugin" / "plugin.json").read_text(encoding="utf-8"))
         self.assertEqual(manifest["name"], "shared-software-factory")
-        self.assertEqual(manifest["version"], "0.2.0")
+        self.assertEqual(manifest["version"], "0.2.1")
 
     def test_no_stale_plugin_namespace(self):
         stale_ns = re.compile(r"(?<!shared-)software-factory:")

@@ -255,6 +255,15 @@ class MergeGateTest(Base):
         self.ok("halt", "clear")
         self.ok("merge-check", "42-rate-limit", "--head", SHA1)
 
+    def test_repo_sets_owner_name_for_dashboard_links(self):
+        self.assertIn("no repo set", self.ok("repo"))
+        self.ok("repo", "octo/widgets")
+        with open(os.path.join(self.d, "board.json")) as f:
+            self.assertEqual(json.load(f)["repo"], "octo/widgets")
+        self.assertIn("octo/widgets", self.ok("repo"))
+        self.assertEqual(self.run_cli("repo", "not a repo")[0], 1)
+        self.ok("validate")
+
     def test_needs_human_to_pr_open_only_with_human_approve(self):
         self.add()
         self.to_review()

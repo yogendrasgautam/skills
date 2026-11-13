@@ -117,11 +117,11 @@ rebuilds for every job still on GitHub (jobs gone from GitHub are dropped). It l
 `base`, `plan`, `ticket`, `epic` and `blockerTip` (the blocker branch's pre-merge tip SHA, for a
 restack), and for **your own** jobs it keeps your `stage` unless GitHub says `merged`, `closed` or
 `needs-human`. Jobs of other developers appear with `owner` = their login; they are visible
-but never yours to drive. Each job also carries `issueUrl` (and a PR URL) for links. The `id` comes
+but never yours to drive. Each job also carries `issueUrl` and `prUrl` for links; when you set `pr` yourself, set `prUrl` too, and keep the top-level `repo` (the dashboard builds missing links from it). The `id` comes
 from the PR branch once a PR exists, so renaming the issue never changes it.
 
 ```json
-{ "jobs": [ {
+{ "repo": "owner/name", "jobs": [ {
   "id": "42-rate-limiting", "title": "Rate limiting on the API",   // <issue>-<slug>; slug = kebab-case, at most 4 words
   "plan": "api-hardening", "ticket": "T3",
   "issue": 42, "epic": 40, "pr": 57,

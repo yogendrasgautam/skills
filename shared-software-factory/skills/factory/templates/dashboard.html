@@ -108,10 +108,16 @@ function link(url, text) {
   return /^https?:\/\//i.test(url || "") ? `<a href="${esc(url)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">${esc(text)}</a>` : esc(text);
 }
 
+// An explicit issueUrl/prUrl wins; otherwise build it from the board's "owner/name" repo
+// (a hand-rewritten board.json can drop the url fields but keeps the numbers).
+function ghUrl(kind, n) {
+  return /^[\w.-]+\/[\w.-]+$/.test(board.repo || "") && /^\d+$/.test(String(n)) ? `https://github.com/${board.repo}/${kind}/${n}` : "";
+}
+
 function links(j) {
   const parts = [];
-  if (j.issue) parts.push(link(j.issueUrl, `#${j.issue}`));
-  if (j.pr) parts.push(link(j.prUrl, `PR #${j.pr}`));
+  if (j.issue) parts.push(link(j.issueUrl || ghUrl("issues", j.issue), `#${j.issue}`));
+  if (j.pr) parts.push(link(j.prUrl || ghUrl("pull", j.pr), `PR #${j.pr}`));
   return parts.join(" · ");
 }
 

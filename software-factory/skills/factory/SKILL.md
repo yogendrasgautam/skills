@@ -155,6 +155,7 @@ Shape (written by `F`; shown so you can read it — `F show <id>` prints one job
 
 ```json
 { "halt": "",                              // non-empty = andon cord pulled (reason)
+  "repo": "owner/name",                    // set by `F repo` at setup; the dashboard links issues/PRs with it
   "jobs": [ {
   "id": "42-rate-limiting", "title": "Rate limiting on the API",   // id = <issue>-<slug>
   "plan": "api-hardening", "ticket": "T3",
@@ -201,7 +202,8 @@ Shape (written by `F`; shown so you can read it — `F show <id>` prints one job
    clean outside `factory/`; other dirt → ask the user to commit/stash first.
 2. Scaffold (skip files that already exist — never overwrite project state):
    - copy `${CLAUDE_PLUGIN_ROOT}/skills/factory/templates/{dashboard.html,board.json,backlog.md,README.md}`
-     into `factory/`, and `mkdir -p factory/jobs factory/plans`; run `F validate`
+     into `factory/`, and `mkdir -p factory/jobs factory/plans`; run `F repo <nameWithOwner>`
+     (from step 1's `gh repo view`, so the dashboard links issues and PRs) and `F validate`
      (a board from an older plugin version with `NNN-` ids: finish or close those jobs first);
    - append `factory/` and `.worktrees/` to `.git/info/exclude` if missing (local-only, no commit);
    - create the labels (idempotent, `gh label create <name> --force`): `factory`, `epic`,

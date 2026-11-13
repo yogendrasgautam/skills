@@ -35,6 +35,8 @@
   .chip.CHANGES, .chip.BLOCKED { background: var(--chg-bg); color: var(--chg); }
   .chip.SKIPPED { opacity: .55; }
   .badge { font-size: 10px; padding: 1px 6px; border-radius: 4px; font-weight: 600; }
+  .card a { color: var(--accent); text-decoration: none; }
+  .card a:hover { text-decoration: underline; }
   .badge.APPROVE { background: var(--pass-bg); color: var(--pass); }
   .badge.ESCALATE { background: var(--human-bg); color: var(--human); }
   .empty { color: var(--muted); font-size: 12px; text-align: center; padding: 12px 0; }
@@ -109,6 +111,24 @@ function chips(reviews) {
   return REVIEWERS.map(k => `<span class="chip ${esc(reviews?.[k])}" title="${k}: ${esc(reviews?.[k] || "pending")}">${k}</span>`).join("");
 }
 
+// Only http(s) URLs become links; anything else renders as plain text.
+function link(url, text) {
+  return /^https?:\/\//i.test(url || "") ? `<a href="${esc(url)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">${esc(text)}</a>` : esc(text);
+}
+
+// An explicit issueUrl/prUrl wins; otherwise build it from the board's "owner/name" repo
+// (a hand-rewritten board.json can drop the url fields but keeps the numbers).
+function ghUrl(kind, n) {
+  return /^[\w.-]+\/[\w.-]+$/.test(board.repo || "") && /^\d+$/.test(String(n)) ? `https://github.com/${board.repo}/${kind}/${n}` : "";
+}
+
+function links(j) {
+  const parts = [];
+  if (j.issue) parts.push(link(j.issueUrl || ghUrl("issues", j.issue), `#${j.issue}`));
+  if (j.pr) parts.push(link(j.prUrl || ghUrl("pull", j.pr), `PR #${j.pr}`));
+  return parts.join(" · ");
+}
+
 function card(j) {
   const rounds = (j.rounds && j.rounds.length) ? j.rounds
     : (j.reviews ? [{ n: j.round || 1, reviews: j.reviews }] : []);
@@ -117,7 +137,7 @@ function card(j) {
     <div class="id">${esc(j.id)} ${j.decision ? `<span class="badge ${esc(j.decision)}">${esc(j.decision)}</span>` : ""}</div>
     <div class="title">${esc(j.title || "")}</div>
     <div class="sub">${esc(j.branch || "")}${j.round ? ` · round ${j.round}` : ""}</div>
-    <div class="sub">${j.issue ? `#${esc(j.issue)}` : ""}${j.pr ? ` · PR #${esc(j.pr)}` : ""}${j.base && j.base !== "main" ? ` · stacked on ${esc(j.base)}` : ""}${(j.blockedBy || []).length ? ` · blocked by ${j.blockedBy.map(esc).join(", ")}` : ""}</div>
+    <div class="sub">${links(j)}${j.base && j.base !== "main" ? ` · stacked on ${esc(j.base)}` : ""}${(j.blockedBy || []).length ? ` · blocked by ${j.blockedBy.map(esc).join(", ")}` : ""}</div>
     ${rounds.map(r => `<div class="round"><span class="n" title="${esc(r.mode || "full")} review at ${esc((r.sha || "").slice(0, 10))}">R${esc(r.n)}${r.mode === "delta" ? "Δ" : ""}</span>${r.tests === "FAILED" ? `<span class="chip FAILED" title="tests red — reviewers not run">tests</span>` : ""}${chips(r.reviews)}${r.uxTest ? `<span class="chip ${esc(r.uxTest)}" title="ux-test: ${esc(r.uxTest)}">ux-test</span>` : ""}${r.ci && r.ci !== "none" ? `<span class="chip ${esc(r.ci)}" title="CI: ${esc(r.ci)}${r.ciReason ? " — " + esc(r.ciReason) : ""}">ci</span>` : ""}</div>`).join("")}
     ${(j.risk || []).length ? `<div class="risk" title="${esc(j.risk.join(", "))}">risk paths: ${j.risk.length} file(s) — human approval</div>` : ""}
     ${j.note ? `<div class="note">${esc(j.note)}</div>` : ""}
