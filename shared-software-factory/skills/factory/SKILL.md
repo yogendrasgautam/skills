@@ -30,9 +30,12 @@ Arguments: `$ARGUMENTS`
         ▼   scheduler: every READY ticket runs in parallel (max_parallel)
  ┌──────────────────────────────────────────────────────────────────┐
  │ per ticket:  spec-writer ─► builder ─► opens PR (never merges)   │
- │              ─► security · ux · ui · code reviews in parallel    │
+ │              ─► security · ux · code · adversary in parallel      │
  │              ─► any CHANGES: resume builder (max 3 rounds) ─┐    │
- │              ─► all PASS: approver ◄────────────────────────┘    │
+ │              ─► all PASS + UI-impacting: ux-tester (one at a  │    │
+ │                 time per machine; app run locally, before/    │    │
+ │                 after evidence on the PR) ─► CHANGES: builder ┤    │
+ │              ─► PASS / not UI: approver ◄────────────────────┘    │
  └───────────────┬───────────────────────────────┬──────────────────┘
           APPROVE + CI green               ESCALATE / any doubt
                  ▼                               ▼
@@ -47,16 +50,16 @@ Readiness of a ticket (blockers come from the issue's native "blocked by" links)
 | --- | --- |
 | all blockers `merged` | start now, branch from `main` |
 | a blocker is `pr-open` (approved, PR not yet merged) and every other blocker is merged | **stack**: branch from the blocker's branch, PR targets that branch |
-| a blocker is anywhere else (blocked/spec/build/review/approve/`needs-human`) | wait |
+| a blocker is anywhere else (blocked/spec/build/review/ux-queue/ux-test/approve/`needs-human`) | wait |
 | a blocker is `closed` (issue closed without a merged PR) | wait, and tell the user the blocker was abandoned (link it) |
 
 Agents ship in this plugin and are namespaced `shared-software-factory:<name>` — `planner`,
-`spec-writer`, `builder`, `reviewer-security`, `reviewer-ux`, `reviewer-ui`, `reviewer-code`,
-`approver`. Plugin root: `${CLAUDE_PLUGIN_ROOT}`; templates in
+`spec-writer`, `builder`, `reviewer-security`, `reviewer-ux`, `reviewer-code`,
+`reviewer-adversary`, `ux-tester`, `approver`. Plugin root: `${CLAUDE_PLUGIN_ROOT}`; templates in
 `${CLAUDE_PLUGIN_ROOT}/skills/factory/templates/`; the skills the agents follow (including
 `grilling` and `grill-with-docs`, which **you** follow) are in `${CLAUDE_SKILL_DIR}/library/`.
 
-`MAX_ROUNDS = 3` review rounds. `max_parallel` comes from `factory/profile.md` (default 3).
+`MAX_ROUNDS = 3` review rounds (a ux-test CHANGES or a CI failure sent to the builder uses up its round like a review CHANGES). `max_parallel` comes from `factory/profile.md` (default 3).
 
 ## Hard rules
 
@@ -86,8 +89,15 @@ factory/plans/<slug>/plan.md          planner: ticket breakdown
 factory/jobs/<id>/ticket.md           copy of the GitHub issue body (you)
 factory/jobs/<id>/spec.md             spec-writer
 factory/jobs/<id>/build.md            builder
-factory/jobs/<id>/round-N/review-{security,ux,ui,code}.md   reviewers
+factory/jobs/<id>/round-N/review-{security,ux,code,adversary}.md      reviewers
+factory/jobs/<id>/round-N/adversary/                        reviewer-adversary: throwaway repro scripts
+factory/jobs/<id>/round-N/ux-test.md                        ux-tester (you write it only for SKIPPED)
+factory/jobs/<id>/round-N/evidence/                         ux-tester: before/ after/ video/ traces, pr-comment.md
+factory/jobs/<id>/round-N/ux/                               ux-tester: throwaway scripts, server logs
+factory/jobs/<id>/round-N/ci.md                             you: why CI failed (CI gate)
 factory/jobs/<id>/round-N/human-note.md                     you (rework only)
+factory/ux.lock/                                            single-instance UX-test lock, per machine (you)
+factory/.ux-tools/                                          Playwright install for ux-tester, per machine (setup)
 factory/jobs/<id>/decision.md                               approver
 factory/jobs/<id>/post.md             scratch body for the next shared-history comment (you)
 docs/adr/NNNN-slug.md, CONTEXT.md     in the repo, via a docs PR
@@ -119,10 +129,13 @@ from the PR branch once a PR exists, so renaming the issue never changes it.
   "branch": "factory/42-rate-limiting",
   "base": "main",                          // or the blocker's branch when stacked
   "blockerTip": "",                        // stacked only: blocker branch tip SHA, recorded before it merges
-  "stage": "review",   // blocked | spec | build | review | approve | pr-open | merged | needs-human | closed
+  "stage": "review",   // blocked | spec | build | review | ux-queue | ux-test | approve | pr-open | merged | needs-human | closed
   "round": 2,
-  "reviews": { "security": "CHANGES", "ux": "PASS", "ui": "pending", "code": "PASS" },
-  "rounds": [ { "n": 1, "reviews": { "security": "CHANGES", "ux": "PASS", "ui": "PASS", "code": "CHANGES" } } ],
+  "reviews": { "security": "CHANGES", "ux": "pending", "code": "PASS", "adversary": "CHANGES" },
+  "rounds": [ { "n": 1, "reviews": { "security": "PASS", "ux": "PASS", "code": "PASS", "adversary": "PASS" },
+                "uxTest": "CHANGES" } ],   // uxTest: queued | running | PASS | CHANGES | SKIPPED | BLOCKED (absent = not reached)
+                           // also per round: ci: PASS | FAILED | none, ciReason: "<one line>", ciRerun: "<sha>"
+  "uxQueuedAt": "",    // when it entered ux-queue (FIFO order)
   "decision": null,    // APPROVE | ESCALATE | null
   "note": "",
   "updated": "2026-11-04T12:00:00Z"
@@ -175,11 +188,27 @@ from the PR branch once a PR exists, so renaming the issue never changes it.
    - create the labels (idempotent, `gh label create <name> --force`): `factory`, `epic`,
      `ready`, `blocked`, `in-progress`, `factory-approved`, `needs-human-review`;
    - `dashboard.html` is refreshed from the template on every setup (it holds no state);
+   - **UX tools** (per machine, every case, when the profile says `has_ui: yes`): `mkdir -p
+     factory/.ux-tools && npm --prefix factory/.ux-tools install playwright && npx --prefix
+     factory/.ux-tools playwright install chromium` (skip if already installed). No Node → say
+     so; this developer's UI jobs will be `BLOCKED` until it is fixed. Read `gh --version`: UX
+     evidence uses `gh pr comment --attach` (gh ≥ 2.99.0); older → tell the user to upgrade gh
+     (not fatal — evidence falls back to the evidence branch). A profile with `has_ui: yes` but
+     no `dev_start` line predates UX testing: tell the user to add the UX fields of
+     `${CLAUDE_PLUGIN_ROOT}/skills/factory/templates/profile.shared.md` to `.factory/profile.md`
+     through a normal PR (until then UI jobs are `BLOCKED`);
    - build the board: `python3 ${CLAUDE_SKILL_DIR}/scripts/factory_team.py board --repo <owner/name> --out factory`.
 4. **Profile** (first setup only). Inspect the repo (manifest files, test dirs, lint configs,
    README/CONTRIBUTING/CLAUDE.md, CONTEXT.md, docs/adr), fill in
    `${CLAUDE_PLUGIN_ROOT}/skills/factory/templates/profile.shared.md` (fields: repo, stack, install,
-   test, lint, has_ui, max_parallel, conventions — no `skills_dir`, no absolute paths). Create the
+   test, lint, has_ui, max_parallel, conventions, and when `has_ui: yes` the UX testing fields —
+   no `skills_dir`, no absolute paths). UX fields: detect `dev_start`/`dev_url`/`dev_port` from
+   `package.json` scripts, `Makefile`, `Procfile`, `docker-compose.yml`, framework defaults; pin
+   the port (`--strictPort` or equivalent) so a busy port fails rather than silently moving;
+   derive `ui_globs`/`ui_global` from the layout; confirm the block with the user
+   (AskUserQuestion) — a wrong start command blocks every UI job for the whole team. Login
+   needed → ask for the steps and the env var **names** (never the values; every developer sets
+   them in their own environment). Create the
    setup worktree `git worktree add .worktrees/setup -b factory/setup main`, write the result to
    `.factory/profile.md` there (staged for the PR in step 8), and copy it to the local
    `factory/profile.md`. Empty repo → `stack: undecided`; the grilling picks the stack and the
@@ -308,7 +337,7 @@ Repeat until nothing is runnable or in flight (`next` = at most one new job):
 2. **Promote.** For each `blocked` job apply the readiness table (skip `closed` jobs: the issue was
    closed without a merged PR, so the job is over; never claim or drive one). Ready → check capacity
    **first**: respect `max_parallel` (count **your** jobs — `owner` = you — in
-   spec/build/review/approve; other developers' jobs never use your slots); no free slot →
+   spec/build/review/ux-queue/ux-test/approve; other developers' jobs never use your slots); no free slot →
    leave it queued and do not claim. Otherwise **claim** it, then create its workspace and
    start it.
 
@@ -349,11 +378,14 @@ Repeat until nothing is runnable or in flight (`next` = at most one new job):
 
    **Review round N** (start N=1). `mkdir -p factory/jobs/<id>/round-N`; stage `review`; append
    `{n:N, reviews: all "pending"}`. Spawn **all four reviewers in one message** (`shared-software-factory:reviewer-security`,
-   `shared-software-factory:reviewer-ux`, `shared-software-factory:reviewer-ui`, `shared-software-factory:reviewer-code`), each with:
+   `shared-software-factory:reviewer-ux`, `shared-software-factory:reviewer-code`,
+   `shared-software-factory:reviewer-adversary`), each with:
    `Job <id>. Branch factory/<id>, worktree .worktrees/<id>, Base branch <base>. Round folder factory/jobs/<id>/round-N/. Skills dir: ${CLAUDE_SKILL_DIR}/library (absolute path resolved). Write your review there.`
    As each returns read the first line of its file and set its chip (PASS / CHANGES).
    **WAIT FOR ALL four** — never message the builder mid-round. A missing file or first line that
    isn't `VERDICT: PASS`/`VERDICT: CHANGES` → re-spawn just that `shared-software-factory:reviewer-<name>` once; still bad → CHANGES.
+   The adversary is the reviewer that tries to *break* the change: it reads only spec.md and the
+   diff (never build.md or the other reviews), and every blocker it raises carries a repro command.
    Once all four are in, post each reviewer's file on the issue as a `review round-N` comment
    (see "Posting shared history") before resuming the builder.
    - Any CHANGES and N < MAX_ROUNDS → stage `build`, `SendMessage` `builder-<id>`:
@@ -361,8 +393,99 @@ Repeat until nothing is runnable or in flight (`next` = at most one new job):
      (If it can't be resumed, spawn a fresh `shared-software-factory:builder` named `builder-<id>` with the same message
      plus "read build.md for your previous work" and `Skills dir: ${CLAUDE_SKILL_DIR}/library (absolute path resolved).`.) Then review round N+1.
    - Any CHANGES and N = MAX_ROUNDS → **flag**: "reviews still CHANGES after N rounds".
+   - All four PASS → **UX test**.
 
-   **Approve.** All four PASS → stage `approve`. Spawn `shared-software-factory:approver`: `Job <id>. Branch factory/<id>, worktree .worktrees/<id>, Base branch <base>, PR #<pr>. Rounds 1..N. Skills dir: ${CLAUDE_SKILL_DIR}/library (absolute path resolved). Write factory/jobs/<id>/decision.md.`
+   **UX test** (round N, after all four reviews PASS; the PR is open and review-clean).
+   1. *UI-impact?* True when spec.md says `UI: yes`, **or**
+      `git diff --name-only <base>...factory/<id> -- <each ui_globs and ui_global entry as ':(glob)<g>'>`
+      prints anything. `has_ui: no` and spec `UI: no` → false. Not impacting → write
+      `factory/jobs/<id>/round-N/ux-test.md` = `VERDICT: SKIPPED` + `not UI-impacting (spec UI: no, no
+      file matches ui_globs/ui_global)`, set `uxTest: SKIPPED`, post it (step 6), go to **Approve**.
+   2. *Queue.* Stage `ux-queue`, `uxTest: queued`, `uxQueuedAt` = now. **Only one UX test runs at a
+      time on this machine** (one app on the dev port; teammates' machines run their own): a queued
+      job starts only when it is your oldest `ux-queue` job and you acquire the lock —
+      `mkdir factory/ux.lock` succeeds (atomic). Then write `factory/ux.lock/owner` =
+      `<id> round-N <ISO time>`. `mkdir` fails → read `owner`: older than 45 min → stale (a crashed
+      run): `lsof -ti tcp:<dev_port>` and tell the user what holds the port (don't kill it), remove
+      the lock, retry once; otherwise stay queued and re-check on the next scheduler pass (another
+      session on this machine is testing; if nothing else is in flight, end this `run` and report
+      the job as queued behind the lock owner). Other jobs keep moving.
+   3. *Run.* Stage `ux-test`, `uxTest: running`. Spawn `shared-software-factory:ux-tester`:
+      `Job <id>. Branch factory/<id>, worktree .worktrees/<id>, Base branch <base>, PR #<pr>. Round folder factory/jobs/<id>/round-N/. UX tools: <abs path of factory/.ux-tools>. Test the running app and write ux-test.md and evidence/ there.`
+   4. *Clean up — always, whatever the agent returned.* `lsof -nP -iTCP:<dev_port> -sTCP:LISTEN`:
+      still held by a process whose cwd is under `.worktrees/` → kill its process group;
+      `git worktree remove --force .worktrees/<id>-base` if it exists. Then `rm -rf factory/ux.lock`,
+      and immediately start the next queued job.
+   5. *Publish evidence on the PR* (if `evidence/pr-comment.md` exists, any verdict). From
+      `factory/jobs/<id>/round-N/evidence/`, run
+      `gh pr comment <pr> --body-file pr-comment.md --attach <f1> --attach <f2> …` with every PNG and
+      WebM/MP4 it references (≤ 50 files; drop files > 10 MB and say so in the comment). gh < 2.99 or
+      the upload fails → **fallback**: push the evidence to the orphan branch `factory-evidence`
+      (worktree `.worktrees/_evidence`: `git fetch origin factory-evidence` and check it out, or
+      create it with `git worktree add --detach .worktrees/_evidence && git -C .worktrees/_evidence
+      switch --orphan factory-evidence`), copy to `<id>/round-N/`, commit, `git push origin
+      factory-evidence` (teammates push there too: on reject `git pull --rebase`, retry up to 3
+      times), then post `pr-comment.md` with each `./…` path rewritten to
+      `https://github.com/<repo>/blob/<commit-sha>/<id>/round-N/<path>?raw=true`. This branch never
+      merges anywhere and is kept (audit trail). Both fail → flag "UX evidence not published".
+      Evidence never enters the PR's diff.
+   6. *Share and decide.* Post ux-test.md on the issue as the `ux-test round-N` comment (see
+      "Posting shared history"). Its first line sets `uxTest`:
+      - `PASS` → **Approve**.
+      - `CHANGES` and N < MAX_ROUNDS → stage `build`, `SendMessage` `builder-<id>`:
+        `Round N UX test failed: factory/jobs/<id>/round-N/ux-test.md (screenshots in round-N/evidence/). Fix every [blocker], re-run tests, commit, push, update build.md ("Round N fixes").`
+        (Can't be resumed → fresh builder as in the review step.) Then the full **Review round
+        N+1** (all four reviewers), then UX test again.
+      - `CHANGES` and N = MAX_ROUNDS → **flag** "UX test still CHANGES after N rounds".
+      - `BLOCKED`, missing file, or anything else → re-spawn once only if the file is missing;
+        otherwise **flag** "UX test blocked: <reason>" (an untested UI change never merges silently).
+
+   **CI gate** (`ci_gate(job)`, run before **Approve** and again in **Merge**). CI failures go
+   back to the builder like a review CHANGES — a human only sees the ones code can't fix.
+   1. `gh pr checks <pr>` and `gh pr view <pr> --json mergeable,headRefOid`. No checks configured
+      → pass (the approver notes it). Pending → stay in the current stage and re-check next pass
+      (flag "CI pending > 30 min" past that). All green and `MERGEABLE` → pass.
+   2. *Failing.* If this head SHA was not re-run yet, re-run once (`gh run rerun <run-id> --failed`
+      for each failing run), record `ciRerun: <sha>` in the round and re-check next pass. Green on
+      the re-run → pass, with category `flaky` noted in the round.
+   3. *Still failing — find out why.* For each failing check read `gh run view <run-id>
+      --log-failed` and write `factory/jobs/<id>/round-N/ci.md` (overwrite on a later failure in
+      the same round):
+      ```
+      CI: FAILED
+      <one-line reason: which check failed and why, e.g. "test: tags.spec.ts expects 200, got 500 on empty list">
+
+      ## Failing checks
+      - <check name> — <run URL>
+      ## Why it failed
+      category: code | test | lint | build | ci-config | infra | permissions
+      <2–4 lines: the root cause as far as the log shows it, quoting the decisive error line>
+      ## Log excerpt
+      <the ~60 lines around the first error from --log-failed>
+      ```
+      Category: `code`/`test`/`lint`/`build` = the branch's own code is wrong; `ci-config` = only a
+      change to `.github/` or other CI config would fix it; `infra` = runner, network, outage, a
+      missing service; `permissions` = missing secret, token or access.
+      Set the round's `ci: FAILED` and `ciReason` = the one-line reason; board note =
+      `CI failed (<category>): <reason>`. Post ci.md (without the log excerpt) as one PR comment
+      starting `<!-- factory:ci round-N -->`, so the PR itself says why it failed.
+   4. *Route by category.*
+      - `code`/`test`/`lint`/`build` and N < MAX_ROUNDS → stage `build`; if the PR was approved,
+        set decision `null` and remove `factory-approved` from the PR **and** the issue (other clones
+        derive `pr-open` from it; new code needs a fresh approval). `SendMessage` `builder-<id>`:
+        `Round N CI failed on PR #<pr>: factory/jobs/<id>/round-N/ci.md (<category>: <one-line reason>). Fix the cause, re-run tests locally, commit, push, update build.md ("Round N CI fix").`
+        (Can't be resumed → fresh builder as in the review step.) Then the full **Review round
+        N+1**, UX test, CI gate, Approve.
+      - same categories and N = MAX_ROUNDS → **flag** "CI still failing after N rounds (<category>): <reason>".
+      - `ci-config`, `infra`, `permissions` → **flag** "CI failed (<category>): <reason>" — the
+        builder must not edit CI config, and can't fix runners or secrets.
+   5. *Conflicting* (`mergeable` is `CONFLICTING`, or a restack conflict): list the files with
+      `git merge-tree --write-tree --name-only <base> factory/<id>`; write ci.md with category
+      `conflict` and those files as the reason, then route as `code` with the message
+      `Round N: PR #<pr> conflicts with <base> in <files>. Rebase onto origin/<base>, resolve, re-run tests, push --force-with-lease, update build.md ("Round N conflict fix").`
+
+   **Approve.** All four PASS and `uxTest` is `PASS` or `SKIPPED` → stage `approve`; run the
+   **CI gate** and continue only when it passes (the approver must never be the one to find red CI). Spawn `shared-software-factory:approver`: `Job <id>. Branch factory/<id>, worktree .worktrees/<id>, Base branch <base>, PR #<pr>. Rounds 1..N. Skills dir: ${CLAUDE_SKILL_DIR}/library (absolute path resolved). Round N includes ux-test.md. Write factory/jobs/<id>/decision.md.`
    Post decision.md on the issue as the `decision` comment (see "Posting shared history"), then
    read its first word:
    - `APPROVE` → add label `factory-approved` to the PR **and** the issue (`gh pr edit <pr>
@@ -379,12 +502,11 @@ Repeat until nothing is runnable or in flight (`next` = at most one new job):
      job's worktree `git fetch origin`, then `git rebase --onto origin/main <blockerTip>` (the
      blocker's pre-merge tip from the board is the upstream; the squash-merged blocker's own
      commits are dropped); `git push --force-with-lease`; `gh pr edit <pr> --base main`; set
-     `base: main` and `blockerTip: ""`. No `blockerTip` recorded → **flag** "restack: blocker tip unknown". Rebase conflict → `git rebase --abort`, **flag** "restack conflict". If the
+     `base: main` and `blockerTip: ""`. No `blockerTip` recorded → **flag** "restack: blocker tip unknown". Rebase conflict → `git rebase --abort`, then the **CI gate**'s conflict path (step 5). If the
      restacked diff's `git patch-id` differs from before the rebase, send the job back to
-     **Review** round N+1 (stage `review`); otherwise continue.
-   - PR base is `main`: check `gh pr checks <pr>` and `gh pr view <pr> --json mergeable`.
-     Pending → stay `pr-open` (flag if pending > 30 min). Failing/conflicting → **flag**.
-     All green → `gh pr merge <pr> --squash --delete-branch`. Refused → **flag**.
+     **Review** round N+1 (stage `review`, then UX test again); otherwise continue.
+   - PR base is `main`: run the **CI gate** again (main may have moved since approval). Pending
+     → stay `pr-open`. Passes → `gh pr merge <pr> --squash --delete-branch`. Refused → **flag**.
    - Merged: stage `merged`; `git worktree remove .worktrees/<id>`; ensure the issue is closed
      (`gh issue close <N> --comment "merged in #<pr>"` if GitHub didn't auto-close it); `git -C <main> pull
      --ff-only`; tick the ticket in the epic's task list: re-read the epic body right before
@@ -422,6 +544,7 @@ only their local files). Each comment's first line is its marker:
 | --- | --- | --- |
 | each reviewer, each round | `<!-- factory:review round-N -->` | line 2 `<reviewer>: <first line of the review file>` (e.g. `security: VERDICT: PASS`), line 3 a link line `Round N · [PR #<pr>](<prUrl>) · [issue #<N>](<issueUrl>)`, blank line, then the rest of the file |
 | builder returns / fixes | `<!-- factory:build -->` | link line, blank line, then build.md |
+| ux-tester, each round | `<!-- factory:ux-test round-N -->` | link line, blank line, then ux-test.md (the screenshots are on the PR, step 5 of UX test) |
 | approver | `<!-- factory:decision -->` | link line, blank line, then decision.md |
 | `rework` note | `<!-- factory:human-note round-N -->` | link line, blank line, then the note |
 
@@ -491,7 +614,8 @@ merged it on GitHub, just sync the board. Otherwise append `\n---\nHUMAN APPROVE
 decision.md and update the `decision` comment (see "Posting shared history"), set decision
 `APPROVE`, remove `needs-human-review` from the PR and the issue, add `factory-approved` to the PR and the issue, set
 stage `pr-open`, and run **Merge** (same gates: base `main`, checks green; a human approval
-overrides the approver's ESCALATE, not a failing CI). Then run `run` to release dependents.
+overrides the approver's ESCALATE, not a failing CI — a CI
+fix sent to the builder is new code, so it needs review and approval again). Then run `run` to release dependents.
 
 ### `rework <job-id> <note>`
 
@@ -521,7 +645,9 @@ GitHub" first, which also creates the worktree from `origin/factory/<id>` and sp
 ## Rules
 
 - Agents get context from files, not the conversation; each writes only its own file.
-- Every review's first line is `VERDICT: PASS` or `VERDICT: CHANGES`; decision.md starts with `APPROVE` or `ESCALATE`.
+- Every review's first line is `VERDICT: PASS` or `VERDICT: CHANGES`; ux-test.md's is `VERDICT: PASS|CHANGES|BLOCKED|SKIPPED`; decision.md starts with `APPROVE` or `ESCALATE`.
+- At most one ux-tester at a time per machine (the `factory/ux.lock` lock); every app it starts is
+  stopped before the lock is released.
 - Builders work and commit only on `factory/<id>` and open PRs; **only you merge, only via `gh pr merge`.**
 - Independent tickets run in parallel; never serialise work that has no blocker.
 - Keep GitHub current: labels follow the stage, the PR/issue links are on the board, one comment

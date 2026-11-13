@@ -15,7 +15,7 @@
   header { display: flex; align-items: baseline; gap: 12px; padding: 16px 24px; border-bottom: 1px solid var(--line); background: var(--panel); }
   header h1 { font-size: 16px; margin: 0; }
   header .meta { color: var(--muted); font-size: 12px; margin-left: auto; }
-  .board { display: grid; grid-template-columns: repeat(6, minmax(190px, 1fr)); gap: 12px; padding: 16px 24px; overflow-x: auto; }
+  .board { display: grid; grid-template-columns: repeat(11, minmax(190px, 1fr)); gap: 12px; padding: 16px 24px; overflow-x: auto; }
   .col { background: #eef0f3; border-radius: 10px; padding: 10px; min-height: 60vh; }
   .col.human { background: var(--human-bg); outline: 2px solid var(--human); }
   .col h2 { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 2px 4px 10px; display: flex; justify-content: space-between; }
@@ -32,7 +32,8 @@
   .round .n { font-size: 10px; color: var(--muted); width: 20px; }
   .chip { font-size: 10px; padding: 1px 6px; border-radius: 999px; background: var(--pend-bg); color: var(--pend); }
   .chip.PASS { background: var(--pass-bg); color: var(--pass); }
-  .chip.CHANGES { background: var(--chg-bg); color: var(--chg); }
+  .chip.CHANGES, .chip.BLOCKED { background: var(--chg-bg); color: var(--chg); }
+  .chip.SKIPPED { opacity: .55; }
   .badge { font-size: 10px; padding: 1px 6px; border-radius: 4px; font-weight: 600; }
   .badge.APPROVE { background: var(--pass-bg); color: var(--pass); }
   .badge.ESCALATE { background: var(--human-bg); color: var(--human); }
@@ -55,6 +56,10 @@
   .doc .v-CHANGES { color: var(--chg); font-weight: 700; }
   .doc .v-ESCALATE { color: var(--human); font-weight: 700; }
   .err { color: var(--chg); padding: 16px 24px; }
+  .halt { background: var(--chg-bg); color: var(--chg); font-weight: 600; padding: 10px 24px; border-bottom: 1px solid var(--chg); }
+  .card .risk { color: var(--human); font-size: 11px; margin-top: 4px; }
+  .chip.FAILED { background: var(--chg-bg); color: var(--chg); }
+  .chip.flaky { background: var(--human-bg); color: var(--human); }
 </style>
 </head>
 <body>
@@ -63,6 +68,7 @@
   <span class="meta" id="meta">loading…</span>
 </header>
 <div id="err" class="err" hidden></div>
+<div id="halt" class="halt" hidden></div>
 <main class="board" id="board"></main>
 <aside id="panel" aria-label="Job files">
   <div class="top"><b id="p-id"></b><span id="p-title"></span><button id="close" aria-label="Close">×</button></div>
@@ -72,10 +78,10 @@
 <script>
 const STAGES = [
   ["blocked", "Blocked"], ["spec", "Spec"], ["build", "Build"], ["review", "Review"],
-  ["approve", "Approve"], ["pr-open", "PR open"], ["merged", "Merged"], ["needs-human", "Needs human"],
+  ["ux-queue", "UX queue"], ["ux-test", "UX test"], ["approve", "Approve"], ["pr-open", "PR open"], ["merged", "Merged"], ["needs-human", "Needs human"], ["closed", "Closed"],
 ];
-const REVIEWERS = ["security", "ux", "ui", "code"];
-let board = { jobs: [] }, openId = null, openFile = null, lastJson = "";
+const REVIEWERS = ["security", "ux", "code", "adversary"];
+let board = { jobs: [] }, metrics = null, openId = null, openFile = null, lastJson = "";
 
 const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 
@@ -86,7 +92,12 @@ async function poll() {
     const txt = await r.text();
     document.getElementById("err").hidden = true;
     if (txt !== lastJson) { lastJson = txt; board = JSON.parse(txt); render(); if (openId) refreshPanel(); }
-    document.getElementById("meta").textContent = `${board.jobs.length} job(s) · updated ${new Date().toLocaleTimeString()}`;
+    try { const m = await fetch("metrics.json?t=" + Date.now()); metrics = m.ok ? (await m.json()).summary : null; } catch { metrics = null; }
+    const halt = document.getElementById("halt");
+    halt.hidden = !board.halt; halt.textContent = board.halt ? "Halted — no promotions or merges: " + board.halt : "";
+    const pct = v => v == null ? "–" : Math.round(v * 100) + "%";
+    const m = metrics ? ` · merged ${metrics.merged} · avg rounds ${metrics.avgRounds ?? "–"} · first-pass ${pct(metrics.firstPassRate)} · escalated ${pct(metrics.escalationRate)} · flaky ${metrics.flaky}` : "";
+    document.getElementById("meta").textContent = `${board.jobs.length} job(s)${m} · updated ${new Date().toLocaleTimeString()}`;
   } catch (e) {
     const el = document.getElementById("err");
     el.hidden = false;
@@ -107,7 +118,8 @@ function card(j) {
     <div class="title">${esc(j.title || "")}</div>
     <div class="sub">${esc(j.branch || "")}${j.round ? ` · round ${j.round}` : ""}</div>
     <div class="sub">${j.issue ? `#${esc(j.issue)}` : ""}${j.pr ? ` · PR #${esc(j.pr)}` : ""}${j.base && j.base !== "main" ? ` · stacked on ${esc(j.base)}` : ""}${(j.blockedBy || []).length ? ` · blocked by ${j.blockedBy.map(esc).join(", ")}` : ""}</div>
-    ${rounds.map(r => `<div class="round"><span class="n">R${esc(r.n)}</span>${chips(r.reviews)}</div>`).join("")}
+    ${rounds.map(r => `<div class="round"><span class="n" title="${esc(r.mode || "full")} review at ${esc((r.sha || "").slice(0, 10))}">R${esc(r.n)}${r.mode === "delta" ? "Δ" : ""}</span>${r.tests === "FAILED" ? `<span class="chip FAILED" title="tests red — reviewers not run">tests</span>` : ""}${chips(r.reviews)}${r.uxTest ? `<span class="chip ${esc(r.uxTest)}" title="ux-test: ${esc(r.uxTest)}">ux-test</span>` : ""}${r.ci && r.ci !== "none" ? `<span class="chip ${esc(r.ci)}" title="CI: ${esc(r.ci)}${r.ciReason ? " — " + esc(r.ciReason) : ""}">ci</span>` : ""}</div>`).join("")}
+    ${(j.risk || []).length ? `<div class="risk" title="${esc(j.risk.join(", "))}">risk paths: ${j.risk.length} file(s) — human approval</div>` : ""}
     ${j.note ? `<div class="note">${esc(j.note)}</div>` : ""}
   </div>`;
 }
@@ -132,7 +144,10 @@ function filesFor(j) {
   const n = Math.max(j.round || 0, ...(j.rounds || []).map(r => r.n), 0);
   for (let i = 1; i <= n; i++) {
     f.push([`R${i} human`, `${base}round-${i}/human-note.md`]);
+    f.push([`R${i} tests`, `${base}round-${i}/tests.txt`]);
     REVIEWERS.forEach(k => f.push([`R${i} ${k}`, `${base}round-${i}/review-${k}.md`]));
+    f.push([`R${i} ux-test`, `${base}round-${i}/ux-test.md`]);
+    f.push([`R${i} ci`, `${base}round-${i}/ci.md`]);
   }
   f.push(["decision", base + "decision.md"]);
   return f;

@@ -10,8 +10,8 @@ decisions into a spec, not to make new design decisions.
 
 ## Read first
 1. `factory/profile.md` — stack, test cmd, conventions, and `skills_dir`.
-2. The decisions file named in your prompt (`factory/plans/<slug>/decisions.md`, or
-   `factory/jobs/<id>/decisions.md` for a single feature) and every ADR it links. These are
+2. The decisions file named in your prompt (`factory/plans/<slug>/decisions.md`, for an epic
+   and for a single feature alike) and every ADR it links. These are
    **binding**: the spec must not contradict them.
 3. These skills from `<skills_dir>` and follow them, with the overrides below:
    - `wayfinder/SKILL.md` — orient: where things live, reuse, the nearest seam.
@@ -48,7 +48,14 @@ Decisions, Testing Decisions, Out of Scope), plus required sections:
 ## Decisions & ADRs
 - D<n> (<decisions file>) — <one line>; ADR: docs/adr/NNNN-….md (if any)
 ```
-Add `UI: yes|no` on its own line right under the title — reviewers use it.
+Add `UI: yes|no` on its own line right under the title — reviewers and the UX tester use it.
+`UI: yes` whenever the change can alter what a user sees in the app (new/changed screens, styles,
+shared components, copy). When `UI: yes`, also add:
+```
+## UI Surfaces
+- <screen> — <route/URL path> — <how to reach it: login? data/state needed? clicks> — <ACs it shows>
+```
+The UX tester starts the app and checks exactly these screens, on the base branch and on yours.
 
 **If you hit a blocking gap**, write the file with only the title line, then:
 ```

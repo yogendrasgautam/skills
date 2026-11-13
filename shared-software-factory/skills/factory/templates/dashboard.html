@@ -32,7 +32,8 @@
   .round .n { font-size: 10px; color: var(--muted); width: 20px; }
   .chip { font-size: 10px; padding: 1px 6px; border-radius: 999px; background: var(--pend-bg); color: var(--pend); }
   .chip.PASS { background: var(--pass-bg); color: var(--pass); }
-  .chip.CHANGES { background: var(--chg-bg); color: var(--chg); }
+  .chip.CHANGES, .chip.BLOCKED { background: var(--chg-bg); color: var(--chg); }
+  .chip.SKIPPED { opacity: .55; }
   .badge.stale { background: var(--human-bg); color: var(--human); }
   .card a { color: var(--accent); text-decoration: none; }
   .card a:hover { text-decoration: underline; }
@@ -75,10 +76,10 @@
 <script>
 const STAGES = [
   ["blocked", "Blocked"], ["spec", "Spec"], ["build", "Build"], ["review", "Review"],
-  ["approve", "Approve"], ["pr-open", "PR open"], ["merged", "Merged"], ["needs-human", "Needs human"],
+  ["ux-queue", "UX queue"], ["ux-test", "UX test"], ["approve", "Approve"], ["pr-open", "PR open"], ["merged", "Merged"], ["needs-human", "Needs human"],
   ["closed", "Closed"],
 ];
-const REVIEWERS = ["security", "ux", "ui", "code"];
+const REVIEWERS = ["security", "ux", "code", "adversary"];
 let board = { jobs: [] }, openId = null, openFile = null, lastJson = "";
 
 const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
@@ -124,7 +125,7 @@ function card(j) {
     <div class="sub">${esc(j.branch || "")}${j.round ? ` · round ${j.round}` : ""}</div>
     <div class="sub">${links(j)}${j.base && j.base !== "main" ? ` · stacked on ${esc(j.base)}` : ""}${(j.blockedBy || []).length ? ` · blocked by ${j.blockedBy.map(esc).join(", ")}` : ""}</div>
     ${j.owner ? `<div class="sub">owner: ${esc(j.owner)}</div>` : ""}
-    ${rounds.map(r => `<div class="round"><span class="n">R${esc(r.n)}</span>${chips(r.reviews)}</div>`).join("")}
+    ${rounds.map(r => `<div class="round"><span class="n">R${esc(r.n)}</span>${chips(r.reviews)}${r.uxTest ? `<span class="chip ${esc(r.uxTest)}" title="ux-test: ${esc(r.uxTest)}">ux-test</span>` : ""}${r.ci && r.ci !== "none" ? `<span class="chip ${r.ci === "FAILED" ? "CHANGES" : esc(r.ci)}" title="CI: ${esc(r.ci)}${r.ciReason ? " — " + esc(r.ciReason) : ""}">ci</span>` : ""}</div>`).join("")}
     ${j.note ? `<div class="note">${esc(j.note)}</div>` : ""}
   </div>`;
 }
@@ -150,6 +151,7 @@ function filesFor(j) {
   for (let i = 1; i <= n; i++) {
     f.push([`R${i} human`, `${base}round-${i}/human-note.md`]);
     REVIEWERS.forEach(k => f.push([`R${i} ${k}`, `${base}round-${i}/review-${k}.md`]));
+    f.push([`R${i} ux-test`, `${base}round-${i}/ux-test.md`]);
   }
   f.push(["decision", base + "decision.md"]);
   return f;
