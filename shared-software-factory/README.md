@@ -1,6 +1,6 @@
 # Shared Software Factory — a Claude Code plugin
 
-Hands-off, team-ready feature delivery (the shared variant of `software-factory`: several developers, one GitHub-derived board). `/shared-software-factory:factory` is the orchestrator; eight role agents do
+Hands-off, team-ready feature delivery (the shared variant of `software-factory`: several developers, one GitHub-derived board). `/shared-software-factory:factory` is the orchestrator; nine role agents do
 the work, each following bundled engineering skills (`skills/factory/library/`).
 
 ## Install
@@ -15,14 +15,16 @@ shared-software-factory/
 ├── .claude-plugin/plugin.json      # self-contained, no dependencies
 ├── skills/factory/SKILL.md         # the orchestrator (loop diagram + commands)
 ├── skills/factory/templates/       # copied into a project's factory/ by setup
-└── agents/                         # planner, spec-writer, builder, reviewer-{security,ux,ui,code}, approver
+└── agents/                         # planner, spec-writer, builder, reviewer-{security,ux,code,adversary}, ux-tester, approver
 ```
 
 ```
 grill (you) ─► ADRs + decisions ─► planner ─► GitHub epic + ticket issues (native blocked-by)
                                                    │ independent tickets run in parallel
-   ticket ─► spec-writer ─► builder ─► PR ─► [security · ux · ui · code] ─► approver
-              (opus)         (opus)           (opus  sonnet sonnet sonnet)   (opus)
+   ticket ─► spec-writer ─► builder ─► PR ─► [security · ux · code · adversary] ─► ux-tester* ─► approver
+              (opus)         (opus)           (opus  sonnet sonnet  opus)         (sonnet)     (opus)
+   * UI-impacting jobs only, one at a time per machine: starts the app locally (base + branch), drives it
+     with Playwright, posts before/after screenshots + video on the PR, stops the app. CHANGES → builder → full re-review.
                                                    │
                        APPROVE + green CI ─► gh pr merge (squash)   |   doubt ─► PR flagged needs-human-review
 ```
@@ -34,7 +36,8 @@ grill (you) ─► ADRs + decisions ─► planner ─► GitHub epic + ticket i
 | `board.json` | job state; only the orchestrator writes it; drives the dashboard |
 | `backlog.md` | local mirror of ready tickets for `/factory run` |
 | `plans/<slug>/` | `decisions.md` (grilling output) and `plan.md` (planner ticket breakdown) |
-| `jobs/<id>/` | `spec.md`, `build.md`, `round-N/review-*.md`, `decision.md` |
+| `jobs/<id>/` | `spec.md`, `build.md`, `round-N/review-*.md`, `round-N/ux-test.md` + `evidence/`, `decision.md` |
+| `ux.lock/`, `.ux-tools/` | per-machine UX-test lock; Playwright + Chromium for the ux-tester |
 | `dashboard.html` | visual board (refreshed from the plugin on every setup) |
 
 ## Agents → bundled skills (`skills/factory/library/`)
@@ -45,8 +48,10 @@ grill (you) ─► ADRs + decisions ─► planner ─► GitHub epic + ticket i
 | spec-writer | wayfinder, to-spec, domain-modeling |
 | builder | implement, tdd, codebase-design, diagnosing-bugs |
 | reviewer-security | code-review (diff process) + security checklist |
-| reviewer-ux / reviewer-ui | prototype/UI.md lens + checklist |
+| reviewer-ux | prototype/UI.md lens + experience & visual checklist |
 | reviewer-code | code-review (Standards + Spec), tdd |
+| reviewer-adversary | none — reads only spec + diff (not build.md), tries to break each AC with throwaway repro scripts; blockers need a repro |
+| ux-tester | Playwright (headless) against the app it starts locally |
 | approver | codebase-design |
 
 ## Use
@@ -61,6 +66,12 @@ grill (you) ─► ADRs + decisions ─► planner ─► GitHub epic + ticket i
 Dashboard: `cd factory && python3 -m http.server 8000` → http://localhost:8000/dashboard.html
 
 Builders work in git worktrees (`.worktrees/<id>`, branch `factory/<id>`) and open PRs; nothing reaches `main` except a merged PR (squash, after approval + green CI). Anything doubtful is left open with the `needs-human-review` label.
+
+UX testing needs, for UI repos: the UX fields in `.factory/profile.md` (`dev_start`, `dev_url`,
+`dev_port`, `ui_globs`, … — repos set up before UX testing add them by hand via a PR), Node on each
+developer's machine (setup installs Playwright into `factory/.ux-tools/`), and `gh` ≥ 2.99 for inline
+evidence (`gh pr comment --attach`; older gh falls back to an orphan `factory-evidence` branch).
+Login credentials come only from env vars named in `ux_login`, set by each developer.
 
 ## Working as a team
 

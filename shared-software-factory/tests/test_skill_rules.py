@@ -368,7 +368,7 @@ class SkillRulesTest(unittest.TestCase):
     # ---- I9 capacity is per developer ----
     def test_capacity_counts_only_own_jobs(self):
         promote = self.text[self.text.index("2. **Promote.**"):self.text.index("**Claim.**")]
-        self.assertIn("count **your** jobs — `owner` = you — in\n   spec/build/review/approve", promote)
+        self.assertIn("count **your** jobs — `owner` = you — in\n   spec/build/review/ux-queue/ux-test/approve", promote)
 
     # ---- I10 ADR number / docs branch collisions ----
     def test_grill_avoids_adr_and_branch_collisions(self):
@@ -384,7 +384,7 @@ class SkillRulesTest(unittest.TestCase):
     def test_every_spawn_uses_namespaced_agent(self):
         import re
         bare = re.compile(r"(?<!shared-software-factory:)\b(planner|spec-writer|builder|approver|"
-                          r"reviewer-(?:security|ux|ui|code))`")
+                          r"reviewer-(?:security|ux|code|adversary))`")
         spawn_lines = [l for l in self.text.splitlines() if re.search(r"[Ss]pawn", l)]
         self.assertTrue(spawn_lines)
         for line in spawn_lines:
@@ -392,7 +392,7 @@ class SkillRulesTest(unittest.TestCase):
                 token = m.group(1)
                 self.assertFalse(bare.fullmatch(token + "`"), line)
         for name in ("planner", "spec-writer", "builder", "approver", "reviewer-security",
-                     "reviewer-ux", "reviewer-ui", "reviewer-code"):
+                     "reviewer-ux", "reviewer-code", "reviewer-adversary"):
             self.assertIn("`shared-software-factory:%s`" % name, self.text, name)
 
     # ---- I12 README honesty ----
@@ -438,6 +438,125 @@ class SkillRulesTest(unittest.TestCase):
             self.assertNotIn("skills_dir", text, n)
             if "Skills dir" in text or "skills dir" in text:
                 self.assertIn("given in your prompt", text, n)
+
+    # ---- UX testing stage ----
+    def test_ux_test_stage_between_reviews_and_approve(self):
+        i_review = self.text.index("**Review round N**")
+        i_ux = self.text.index("**UX test** (round N")
+        i_approve = self.text.index("**Approve.** All four PASS")
+        self.assertLess(i_review, i_ux)
+        self.assertLess(i_ux, i_approve)
+        self.assertIn("`uxTest` is `PASS` or `SKIPPED` → stage `approve`", self.text)
+
+    def test_ux_test_single_instance_lock(self):
+        block = self.text[self.text.index("**UX test** (round N"):self.text.index("**Approve.** All four PASS")]
+        self.assertIn("mkdir factory/ux.lock", block)
+        self.assertIn("rm -rf factory/ux.lock", block)
+        self.assertIn("Only one UX test runs at a\n      time on this machine", block)
+
+    def test_ux_test_spawn_and_evidence(self):
+        self.assertIn("Spawn `shared-software-factory:ux-tester`", self.text)
+        self.assertIn("UX tools: <abs path of factory/.ux-tools>", self.text)
+        self.assertIn("gh pr comment <pr> --body-file pr-comment.md --attach", self.text)
+        self.assertIn("orphan branch `factory-evidence`", self.text)
+        self.assertIn("<!-- factory:ux-test round-N -->", self.text)
+
+    def test_ux_findings_go_back_to_builder_then_full_review(self):
+        self.assertIn("Round N UX test failed:", self.text)
+        self.assertIn("Then the full **Review round\n        N+1** (all four reviewers), then UX test again.", self.text)
+
+    def test_profile_template_has_ux_fields(self):
+        path = os.path.join(os.path.dirname(SKILL), "templates", "profile.shared.md")
+        with open(path, encoding="utf-8") as f:
+            text = f.read()
+        for key in ("ui_globs:", "ui_global:", "dev_start:", "dev_url:", "dev_port:", "ux_login:"):
+            self.assertIn(key, text)
+        self.assertNotIn("ux_tools", text)
+
+    def test_ux_tester_agent_exists(self):
+        path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(SKILL))), "agents", "ux-tester.md")
+        with open(path, encoding="utf-8") as f:
+            text = f.read()
+        self.assertIn("name: ux-tester", text)
+        self.assertIn("`UX tools: <path>`", text)
+        self.assertIn("VERDICT: PASS | CHANGES | BLOCKED", text)
+
+    # ---- adversarial review ----
+    def _agent(self, name):
+        path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(SKILL))), "agents", name + ".md")
+        with open(path, encoding="utf-8") as f:
+            return f.read()
+
+    def test_adversary_agent_contract(self):
+        text = self._agent("reviewer-adversary")
+        self.assertIn("name: reviewer-adversary", text)
+        self.assertIn("VERDICT: PASS | CHANGES", text)
+        self.assertIn("**Do not read** `build.md`", text)
+        self.assertIn("**A `[blocker]` needs a reproduction**", text)
+        self.assertIn("**Never modify the worktree**", text)
+        self.assertIn("fewer than five\n  attacks", text)
+
+    def test_adversary_runs_in_every_review_round(self):
+        review = self.text[self.text.index("**Review round N**"):self.text.index("**UX test** (round N")]
+        self.assertIn("all four reviewers in one message", review)
+        self.assertIn("`shared-software-factory:reviewer-adversary`", review)
+        self.assertIn("**WAIT FOR ALL four**", review)
+        self.assertIn("- All four PASS → **UX test**.", review)
+
+    def test_approver_and_builder_honour_adversary_repros(self):
+        approver = self._agent("approver")
+        self.assertIn("the builder's disagreement alone never settles it", approver)
+        self.assertIn("review-adversary.md", approver)
+        self.assertIn("commit it as a regression test", self._agent("builder"))
+
+    def test_dashboard_shows_adversary_chip(self):
+        with open(os.path.join(TEMPLATES, "dashboard.html"), encoding="utf-8") as f:
+            self.assertIn('"code", "adversary"]', f.read())
+
+    # ---- CI failures go back to the builder, with the reason ----
+    def _gate(self):
+        return self.text[self.text.index("**CI gate** (`ci_gate(job)`"):self.text.index("**Approve.** All four PASS")]
+
+    def test_ci_gate_runs_before_approver_and_before_merge(self):
+        approve = self.text[self.text.index("**Approve.** All four PASS"):self.text.index("**Merge** (a `pr-open` job")]
+        self.assertLess(approve.index("**CI gate**"), approve.index("Spawn `shared-software-factory:approver`"))
+        merge = self.text[self.text.index("**Merge** (a `pr-open` job"):self.text.index("4. Loop back to step 1")]
+        self.assertIn("run the **CI gate** again", merge)
+        self.assertNotIn("Failing/conflicting → **flag**", merge)
+        self.assertIn("the **CI gate**'s conflict path", merge)
+
+    def test_ci_failure_records_why_and_posts_it(self):
+        gate = self._gate()
+        self.assertIn("round-N/ci.md", gate)
+        self.assertIn("## Why it failed", gate)
+        self.assertIn("category: code | test | lint | build | ci-config | infra | permissions", gate)
+        self.assertIn("`CI failed (<category>): <reason>`", gate)
+        self.assertIn("<!-- factory:ci round-N -->", gate)
+        self.assertIn("ci.md                             you: why CI failed", self.text)
+
+    def test_ci_failure_routing(self):
+        gate = self._gate()
+        self.assertIn("gh run rerun <run-id> --failed", gate)
+        self.assertIn("`SendMessage` `builder-<id>`", gate)
+        self.assertIn("Round N CI failed on PR #<pr>", gate)
+        self.assertIn("**flag** \"CI still failing after N rounds", gate)
+        self.assertIn("`ci-config`, `infra`, `permissions` → **flag**", gate)
+        self.assertIn("remove `factory-approved` from the PR **and** the issue", gate)
+
+    def test_builder_and_approver_handle_ci_failures(self):
+        builder = self._agent("builder")
+        self.assertIn("Round N CI failed", builder)
+        self.assertIn("never by skipping, deleting or loosening the check or test", builder)
+        self.assertIn("never edit\n`.github/`", builder)
+        self.assertIn("round-*/ci.md", self._agent("approver"))
+
+    def test_ui_review_merged_into_ux(self):
+        agents = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(SKILL))), "agents")
+        self.assertFalse(os.path.exists(os.path.join(agents, "reviewer-ui.md")))
+        self.assertNotIn("reviewer-ui", self.text)
+        ux = self._agent("reviewer-ux")
+        self.assertIn("## Experience", ux)
+        self.assertIn("## Visual", ux)
 
 
 if __name__ == "__main__":

@@ -6,8 +6,9 @@ Plugin: `/plugin install software-factory@engineering-skills` (self-contained; t
 ```
 grill (you) ─► ADRs + decisions ─► planner ─► GitHub epic + ticket issues (native blocked-by)
                                                    │ independent tickets run in parallel
-   ticket ─► spec-writer ─► builder ─► PR ─► [security · ux · ui · code] ─► approver
-              (opus)         (opus)           (opus  sonnet sonnet sonnet)   (opus)
+   ticket ─► spec-writer ─► builder ─► PR ─► [security · ux · code · adversary] ─► ux-tester* ─► approver
+              (opus)         (opus)           (opus  sonnet sonnet  opus)         (sonnet)     (opus)
+   * UI-impacting jobs only, one at a time: runs the app (base + branch), before/after evidence on the PR
                                                    │
                        APPROVE + green CI ─► gh pr merge (squash)   |   doubt ─► PR flagged needs-human-review
 ```
@@ -19,7 +20,9 @@ grill (you) ─► ADRs + decisions ─► planner ─► GitHub epic + ticket i
 | `board.json` | job state; only the orchestrator writes it; drives the dashboard |
 | `backlog.md` | local mirror of ready tickets for `/factory run` |
 | `plans/<slug>/` | `decisions.md` (grilling output) and `plan.md` (planner ticket breakdown) |
-| `jobs/<id>/` | `spec.md`, `build.md`, `round-N/review-*.md`, `decision.md` |
+| `jobs/<id>/` | `spec.md`, `build.md`, `round-N/review-*.md`, `round-N/ux-test.md` + `evidence/`, `decision.md` |
+| `ux.lock/` | present while a UX test runs (single instance) |
+| `.ux-tools/` | Playwright + Chromium for the ux-tester (installed by setup) |
 | `dashboard.html` | visual board (refreshed from the plugin on every setup) |
 
 ## Agents → bundled skills (`skills/factory/library/`)
@@ -30,8 +33,10 @@ grill (you) ─► ADRs + decisions ─► planner ─► GitHub epic + ticket i
 | spec-writer | wayfinder, to-spec, domain-modeling |
 | builder | implement, tdd, codebase-design, diagnosing-bugs |
 | reviewer-security | code-review (diff process) + security checklist |
-| reviewer-ux / reviewer-ui | prototype/UI.md lens + checklist |
+| reviewer-ux | prototype/UI.md lens + experience & visual checklist |
 | reviewer-code | code-review (Standards + Spec), tdd |
+| reviewer-adversary | none — reads only spec + diff (not build.md), tries to break each AC with throwaway repro scripts; blockers need a repro |
+| ux-tester | Playwright (headless) against the locally running app |
 | approver | codebase-design |
 
 ## Use

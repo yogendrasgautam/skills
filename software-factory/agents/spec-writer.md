@@ -48,7 +48,14 @@ Decisions, Testing Decisions, Out of Scope), plus required sections:
 ## Decisions & ADRs
 - D<n> (<decisions file>) — <one line>; ADR: docs/adr/NNNN-….md (if any)
 ```
-Add `UI: yes|no` on its own line right under the title — reviewers use it.
+Add `UI: yes|no` on its own line right under the title — reviewers and the UX tester use it.
+`UI: yes` whenever the change can alter what a user sees in the app (new/changed screens, styles,
+shared components, copy). When `UI: yes`, also add:
+```
+## UI Surfaces
+- <screen> — <route/URL path> — <how to reach it: login? data/state needed? clicks> — <ACs it shows>
+```
+The UX tester starts the app and checks exactly these screens, on the base branch and on yours.
 
 **If you hit a blocking gap**, write the file with only the title line, then:
 ```

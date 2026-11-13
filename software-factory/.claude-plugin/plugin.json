@@ -1,7 +1,7 @@
 {
   "name": "software-factory",
-  "version": "0.3.0",
-  "description": "A hands-off software factory: /software-factory:factory grills you first (grilling + ADRs), turns the epic into GitHub issues with native dependencies, builds independent tickets in parallel through role agents (spec-writer → builder → four parallel reviewers → approver), and merges only through pull requests — stacked when a blocker is approved but unmerged, flagged for human review when in doubt. State lives in the project's factory/ folder with a live dashboard.",
+  "version": "0.4.0",
+  "description": "A hands-off software factory: /software-factory:factory grills you first (grilling + ADRs), turns the epic into GitHub issues with native dependencies, builds independent tickets in parallel through role agents (spec-writer → builder → four parallel reviewers, one an adversary that tries to break the change with reproduced counterexamples → a one-at-a-time UX tester that runs the app locally and posts before/after screenshots on the PR for UI changes → approver), and merges only through pull requests — stacked when a blocker is approved but unmerged, flagged for human review when in doubt. State lives in the project's factory/ folder with a live dashboard.",
   "author": {
     "name": "Yogendra Gautam"
   },
@@ -14,6 +14,8 @@
     "dashboard",
     "github",
     "pull-requests",
-    "adr"
+    "adr",
+    "playwright",
+    "visual-testing"
   ]
 }
