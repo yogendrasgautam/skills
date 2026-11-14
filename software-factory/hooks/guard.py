@@ -11,6 +11,8 @@ Blocks (exit 2, reason on stderr):
   - gh pr merge from a factory agent (only the orchestrator merges)
   - gh pr merge by the orchestrator without --squash + --match-head-commit, or with --admin
   - merging or editing branch protection through `gh api`
+  - resolving a conflict by picking a side: checkout/restore --ours/--theirs, -X ours|theirs,
+    -s ours, and `rebase --skip` (silently drops the commit being replayed)
 
 This is a guardrail against mistakes, not a sandbox: shell can be obfuscated. Branch
 protection on `main` is the real boundary. Fails open on its own errors.
@@ -63,8 +65,30 @@ def is_protected_ref(tok):
     return ref in PROTECTED
 
 
+SIDE_PICK = "resolve conflicts by intent (keep both changes), never by picking a side wholesale"
+
+
+def picks_side(sub, args):
+    if sub in ("checkout", "restore") and any(t in ("--ours", "--theirs") for t in args):
+        return True
+    if sub in ("merge", "rebase", "pull", "cherry-pick", "revert"):
+        for i, t in enumerate(args):
+            nxt = args[i + 1] if i + 1 < len(args) else ""
+            if t in ("-X", "--strategy-option") and nxt in ("ours", "theirs"):
+                return True
+            if t in ("-Xours", "-Xtheirs", "--strategy-option=ours", "--strategy-option=theirs"):
+                return True
+            if t in ("-s", "--strategy") and nxt == "ours" or t in ("-sours", "--strategy=ours"):
+                return True
+    return False
+
+
 def check_segment(toks, is_agent):
     sub, args = git_sub(toks)
+    if picks_side(sub, args):
+        return SIDE_PICK
+    if sub == "rebase" and "--skip" in args:
+        return "git rebase --skip drops a commit; resolve it, or --abort and report the conflict"
     if sub == "push":
         if any(t in ("--force", "-f", "--mirror", "--all") for t in args):
             return "git push --force/--mirror/--all is not allowed; use --force-with-lease on factory/<id>"

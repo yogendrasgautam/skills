@@ -93,6 +93,7 @@ only writer of `board.json`, validates every move, and appends each one to
 | `F lock run\|ux acquire --owner … ` / `release` / `status` | single-instance locks |
 | `F halt set "<reason>"` / `clear` / `status` | andon cord: no promotions, no merges |
 | `F diff-match --key risk_globs --base <base> --head factory/<id>` | changed files matching profile globs (exit 10 = some) |
+| `F conflicts <id> --base origin/<base> --head factory/<id>` | would it conflict? 0 clean · 11 builder resolves · 12 flag (risk paths, or > 2 conflicts) |
 | `F stuck --minutes 60` · `F show [<id>]` · `F epic <N>` · `F metrics` · `F validate` | reporting |
 
 ## Hard rules
@@ -368,6 +369,9 @@ Repeat until nothing is runnable or in flight (`next` = at most one new job):
       mode: **full** (round 1, and the first round after a rework, restack or rebase) or **delta**
       (the fix diff `<prevSha>..<sha>` only). Exit 3 → **flag** "review rounds exhausted".
       `mkdir -p factory/jobs/<id>/round-N`.
+      *Conflicts first* (cheaper than a round of reviewers on code that can't merge):
+      `git fetch origin && F conflicts <id> --base origin/<base> --head factory/<id>` — exit 11/12
+      → the **CI gate**'s conflict path (step 5) instead of the steps below.
    2. *Tests, once.* Run the profile's `test` command in `.worktrees/<id>` yourself and write
       `round-N/tests.txt`: the command, `sha`, `exit: <code>`, last ~40 lines of output.
       `F round-set <id> tests=PASS|FAILED`. Red → no reviewers: `F transition <id> build`,
@@ -470,7 +474,7 @@ Repeat until nothing is runnable or in flight (`next` = at most one new job):
       ## Failing checks
       - <check name> — <run URL>
       ## Why it failed
-      category: code | test | lint | build | ci-config | infra | permissions
+      category: code | test | lint | build | ci-config | infra | permissions | conflict
       <2–4 lines: the root cause as far as the log shows it, quoting the decisive error line>
       ## Log excerpt
       <the ~60 lines around the first error from --log-failed>
@@ -495,11 +499,18 @@ Repeat until nothing is runnable or in flight (`next` = at most one new job):
       - same categories and no rounds left → **flag** "CI still failing after N rounds (<category>): <reason>".
       - `ci-config`, `permissions`, or `infra` still failing after its re-run → **flag** "CI failed
         (<category>): <reason>" — the builder must not edit CI config, and can't fix runners or secrets.
-   5. *Conflicting* (`mergeable` is `CONFLICTING`, or a restack conflict): list the files with
-      `git merge-tree --write-tree --name-only <base> factory/<id>`; write ci.md with category
-      `conflict` and those files as the reason, then route as `code` with the message
-      `Round N: PR #<pr> conflicts with <base> in <files>. Rebase onto origin/<base>, resolve, re-run tests, push --force-with-lease, update build.md ("Round N conflict fix").`
-      A rebase rewrites history, so the next round is `F round-start … --mode full`.
+   5. *Conflicting* (`mergeable` is `CONFLICTING`, `F conflicts` exit 11/12, or a restack conflict).
+      Unless the round's pre-check just ran it, run `git fetch origin && F conflicts <id> --base
+      origin/<base> --head factory/<id>` — once per conflict, since it counts them. Write ci.md with category `conflict`, the files it printed, and
+      `git log --oneline <merge-base>..origin/<base> -- <files>` (the commits on the base that
+      collided). Then by exit code:
+      - 11 → route as `code` with the message
+        `Round N: PR #<pr> conflicts with <base> in <files> — factory/jobs/<id>/round-N/ci.md. Rebase onto origin/<base> and resolve by intent (builder.md "Resolving conflicts"), re-run tests, push --force-with-lease, update build.md ("Round N conflict fix").`
+        A rebase rewrites history, so the next round is `F round-start … --mode full`, and run
+        **Base moved** for its dependents.
+      - 12 → **flag** with its reason: a conflict in `risk_globs` is a human's call, and a job that
+        keeps conflicting (`> 2`) means the base is churning under it or tickets overlap — re-plan,
+        don't loop.
 
    **Approve.** All four PASS and `uxTest` is `PASS` or `SKIPPED` → `F transition <id> approve`;
    run the **CI gate** and continue only when it passes (the approver must never be the one to

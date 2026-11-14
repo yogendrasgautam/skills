@@ -70,6 +70,14 @@ class SkillRulesTest(unittest.TestCase):
         self.assertIn("Commit: <Head sha>", read("agents", "approver.md"))
         self.assertIn("Epic mode", read("agents", "reviewer-adversary.md"))
 
+    def test_conflict_contract(self):
+        builder = read("agents", "builder.md")
+        self.assertIn('"Resolving conflicts"', self.skill)
+        self.assertIn("## Resolving conflicts", builder)
+        self.assertIn("conflict fix", builder)
+        self.assertIn("zdiff3", builder)
+        self.assertIn("conflict fix", read("agents", "reviewer-code.md"))
+
     def test_plugin_manifest(self):
         m = json.loads(read(".claude-plugin", "plugin.json"))
         self.assertEqual(m["name"], "software-factory")
