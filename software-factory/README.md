@@ -68,9 +68,14 @@ grill (you) ─► ADRs + decisions ─► planner ─► GitHub epic + ticket i
   pushed after approval goes back to review.
 - **Guard hook** (`hooks/guard.py`, PreToolUse on Bash): for the factory's agents always, and for
   your session while a run is in progress, blocks pushes to `main`, `--force`, `--no-verify`,
-  `--admin`, agent-issued merges and merges not pinned with `--match-head-commit`. Outside a
+  `--admin`, agent-issued merges, merges not pinned with `--match-head-commit`, and conflict
+  "resolutions" that pick a side (`--ours`/`--theirs`, `-X ours|theirs`, `rebase --skip`). Outside a
   factory run it does nothing. It is a guardrail, not a sandbox — protect `main` on GitHub too
   (setup checks and tells you).
+- **Merge conflicts** go back to the builder, who rebases and resolves by intent (keeps both
+  changes, regenerates generated files, logs each file's resolution for the reviewers); the next
+  review round is full. `F conflicts` flags a human instead when the conflict is in `risk_globs`
+  or the job has conflicted more than twice. The planner chains tickets that edit the same hot spot.
 - **Always a human**: diffs touching `risk_globs` (CI config, Dockerfiles, migrations, auth, …
   — edit the list in `profile.md`), and PRs with no CI unless the profile says `no_ci: allow`.
 - **Andon cord**: if `main`'s checks go red the factory halts promotions and merges until it is green.

@@ -24,6 +24,9 @@ via SendMessage with the user's feedback on granularity or dependencies.
 - **Maximise independence.** Two tickets that don't truly need each other's code must not be
   chained — independent tickets run in parallel. Only list a blocker when the dependent ticket
   cannot be built or tested without the blocker's code on its base. Say why in one clause.
+- **But no parallel edits to the same hot spot.** Two tickets that would edit the same function,
+  schema, route table or config file will conflict when the first merges. Chain them
+  (`Blocked by: T1 (both edit <file>)`), or move the shared change into a prefactoring ticket both depend on.
 - Reference decisions in each ticket (`Decisions: D2, D5`) so spec-writers can find them.
 
 ## Output: factory/plans/<slug>/plan.md

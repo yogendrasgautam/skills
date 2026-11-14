@@ -399,5 +399,57 @@ class MiscTest(Base):
         self.assertEqual(self.run_cli("diff-match", "--key", "ui_globs", *common)[0], 0)
 
 
+class ConflictsTest(Base):
+    def setUp(self):
+        super().setUp()
+        self.repo = os.path.join(self.tmp.name, "repo")
+        os.mkdir(self.repo)
+        self.git("init", "-q", "-b", "main")
+        for f in ("a.txt", "auth.py", "c.txt"):
+            self.write(f, "base\n")
+        self.git("add", "."), self.git("commit", "-qm", "init")
+        self.git("switch", "-qc", "factory/1-x")
+        self.write("a.txt", "branch\n"), self.write("auth.py", "branch\n")
+        self.git("commit", "-qam", "work")
+        self.git("switch", "-q", "main")
+        self.profile = os.path.join(self.d, "profile.md")
+        with open(self.profile, "w") as f:
+            f.write("risk_globs: auth.py\n")
+        self.add("1-x")
+
+    def git(self, *a):
+        subprocess.run(("git", "-C", self.repo, "-c", "user.email=t@t", "-c", "user.name=t") + a,
+                       check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+
+    def write(self, name, text):
+        with open(os.path.join(self.repo, name), "w") as f:
+            f.write(text)
+
+    def check(self):
+        return self.run_cli("conflicts", "1-x", "--base", "main", "--head", "factory/1-x",
+                            "--profile", self.profile, "--repo", self.repo)
+
+    def test_clean_merge(self):
+        self.write("c.txt", "main\n"), self.git("commit", "-qam", "main moved")
+        code, out, _ = self.check()
+        self.assertEqual((code, out.strip()), (0, "clean"))
+        self.assertNotIn("conflicts", self.job("1-x"))
+
+    def test_conflict_goes_to_builder_then_human(self):
+        self.write("a.txt", "main\n"), self.git("commit", "-qam", "main moved")
+        code, out, _ = self.check()
+        self.assertEqual((code, out.strip(), self.job("1-x")["conflicts"]), (11, "a.txt", 1))
+        self.assertEqual(self.check()[0], 11)
+        code, _, err = self.check()
+        self.assertEqual(code, 12)
+        self.assertIn("conflict #3", err)
+
+    def test_conflict_in_risk_path_needs_human(self):
+        self.write("auth.py", "main\n"), self.git("commit", "-qam", "main moved")
+        code, out, err = self.check()
+        self.assertEqual((code, out.strip()), (12, "auth.py"))
+        self.assertIn("risk paths: auth.py", err)
+
+
 if __name__ == "__main__":
     unittest.main()

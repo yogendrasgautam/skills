@@ -9,6 +9,7 @@ Stdlib only; runs on Python 3.9+.
 
 Exit codes: 0 ok · 1 bad input/state · 2 illegal transition · 3 review rounds exhausted
             4 unreadable verdict · 5 lock stale · 6 lock held · 10 diff-match found files
+            11 conflicts: builder resolves · 12 conflicts: needs a human
 """
 from __future__ import annotations
 
@@ -52,7 +53,7 @@ ROUND_ENUMS = {
     "mode": ("full", "delta"),
 }
 ROUND_FREE = ("ciReason", "ciRerun", "sha", "prevSha")
-JOB_INT = ("pr", "issue", "epic")
+JOB_INT = ("pr", "issue", "epic", "conflicts")
 JOB_BOOL = ("uiImpact",)
 JOB_STR = ("base", "uxQueuedAt", "note", "title", "sha", "epicBase", "plan", "ticket")
 JOB_LIST = ("risk", "blockedBy")
@@ -662,22 +663,71 @@ def profile_value(profile, key):
     return ""
 
 
-def cmd_diff_match(a, d):
-    globs = []
-    for key in a.key:
-        globs += split_list(profile_value(a.profile, key))
+def matching_changes(repo, base, head, globs):
+    """Files changed in base...head that match any of the git pathspec globs."""
     if not globs:
-        return
-    cmd = ["git", "-C", a.repo, "diff", "--name-only", "%s...%s" % (a.base, a.head), "--"]
+        return []
+    cmd = ["git", "-C", repo, "diff", "--name-only", "%s...%s" % (base, head), "--"]
     cmd += [":(glob)" + g for g in globs]
     p = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
     if p.returncode != 0:
         raise Fail(1, "git diff failed: %s" % p.stderr.strip())
-    files = [f for f in p.stdout.splitlines() if f]
+    return [f for f in p.stdout.splitlines() if f]
+
+
+def cmd_diff_match(a, d):
+    globs = []
+    for key in a.key:
+        globs += split_list(profile_value(a.profile, key))
+    files = matching_changes(a.repo, a.base, a.head, globs)
     for f in files:
         print(f)
     if files:
         raise Fail(10, "")
+
+
+def conflicted_files(repo, base, head):
+    """Files a merge of head into base would conflict on ([] = merges cleanly). git >= 2.38."""
+    p = subprocess.run(["git", "-C", repo, "merge-tree", "--write-tree", "--name-only",
+                        "--no-messages", base, head],
+                       stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
+    if p.returncode == 0:
+        return []
+    if p.returncode != 1:
+        raise Fail(1, "git merge-tree failed: %s" % p.stderr.strip())
+    files = []
+    for line in p.stdout.splitlines()[1:]:  # line 1 is the tree id
+        if not line:
+            break
+        if line not in files:
+            files.append(line)
+    return files
+
+
+def cmd_conflicts(a, d):
+    """Would factory/<id> conflict with its base? Counts conflicts, decides builder vs human."""
+    board = load(d)
+    job = find(board, a.id)
+    files = conflicted_files(a.repo, a.base, a.head)
+    if not files:
+        print("clean")
+        return
+    job["conflicts"] = job.get("conflicts", 0) + 1
+    risky = []
+    if os.path.exists(a.profile):
+        risky = sorted(set(files) & set(matching_changes(
+            a.repo, a.base, a.head, split_list(profile_value(a.profile, "risk_globs")))))
+    touch(job)
+    save(d, board)
+    event(d, "conflict", a.id, n=job["conflicts"], files=files, risky=risky)
+    for f in files:
+        print(f)
+    if risky:
+        raise Fail(12, "conflict in risk paths: %s" % ", ".join(risky))
+    if job["conflicts"] > a.max:
+        raise Fail(12, "conflict #%d (max %d): main keeps moving under %s"
+                   % (job["conflicts"], a.max, ", ".join(files)))
+    raise Fail(11, "")
 
 
 # ---------------------------------------------------------------- metrics
@@ -869,6 +919,15 @@ def build_parser():
     s.add_argument("--head", required=True)
     s.add_argument("--repo", default=".")
     s.set_defaults(fn=cmd_diff_match)
+
+    s = sub.add_parser("conflicts", help="conflict check vs base: exit 11 builder resolves, 12 flag")
+    s.add_argument("id")
+    s.add_argument("--base", required=True)
+    s.add_argument("--head", required=True)
+    s.add_argument("--profile", default="factory/profile.md")
+    s.add_argument("--repo", default=".")
+    s.add_argument("--max", type=int, default=2, help="conflict rounds before a human is asked")
+    s.set_defaults(fn=cmd_conflicts)
 
     s = sub.add_parser("metrics", help="per-job and factory metrics from events.jsonl")
     s.set_defaults(fn=cmd_metrics)

@@ -48,6 +48,17 @@ class CheckTest(unittest.TestCase):
         self.assertTrue(self.blocked(
             "gh pr merge 5 --squash --admin --match-head-commit " + SHA, agent=False))
 
+    def test_conflicts_resolved_by_intent(self):
+        for cmd in ("git checkout --ours src/a.py", "git -C .worktrees/1-x checkout --theirs .",
+                    "git restore --theirs src/a.py", "git rebase -X theirs origin/main",
+                    "git rebase -Xours origin/main", "git merge -s ours origin/main",
+                    "git pull --strategy-option=theirs", "git rebase --skip"):
+            self.assertTrue(self.blocked(cmd), cmd)
+        for cmd in ("git rebase origin/main", "git rebase --continue", "git rebase --abort",
+                    "git checkout factory/1-x", "git log -p origin/main -- src/a.py",
+                    "git rerere status"):
+            self.assertFalse(self.blocked(cmd), cmd)
+
     def test_api_bypass(self):
         self.assertTrue(self.blocked("gh api -X PUT repos/o/r/pulls/5/merge"))
         self.assertTrue(self.blocked("gh api -X DELETE repos/o/r/branches/main/protection"))

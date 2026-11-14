@@ -1,6 +1,6 @@
 {
   "name": "software-factory",
-  "version": "0.5.1",
+  "version": "0.6.0",
   "description": "A hands-off software factory: /software-factory:factory grills you first (grilling + ADRs), turns the epic into GitHub issues with native dependencies, builds independent tickets in parallel through role agents (spec-writer → builder → four parallel reviewers, one an adversary that tries to break the change with reproduced counterexamples → a one-at-a-time UX tester that runs the app locally and posts before/after screenshots on the PR for UI changes → approver), and merges only through pull requests pinned to the approved commit — stacked when a blocker is approved but unmerged, flagged for human review when in doubt or when risk paths or missing CI are involved. A state script validates every stage move and a guard hook enforces the no-push-to-main rules. State lives in the project's factory/ folder with a live dashboard and metrics.",
   "author": {
     "name": "Yogendra Gautam"

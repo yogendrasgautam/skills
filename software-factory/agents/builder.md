@@ -75,5 +75,27 @@ failing check) and fix the cause, never by skipping, deleting or loosening the c
 `.github/` or other CI config; re-run tests, commit, push, and
 append `## Round N fixes` to build.md listing each blocker → fix (or why you disagree).
 If your prompt says "rebase onto <new base>" (a stacked base moved), rebase your branch onto it,
-re-run tests, `git push --force-with-lease`, and note it in build.md.
+re-run tests, `git push --force-with-lease`, and note it in build.md — resolving any conflict as below.
+
+## Resolving conflicts
+A conflict means someone else's merged work and yours touch the same lines. Both are wanted;
+the job is to keep **both behaviours**, not to pick a winner.
+1. `git fetch origin && git rebase origin/<base>` in the worktree (once per worktree: `git config rerere.enabled true` to reuse resolutions,
+   `git config merge.conflictStyle zdiff3` so markers show the common ancestor too).
+2. Before editing a conflicted file, learn why the base changed it: `git log -p <merge-base>..origin/<base> -- <file>`
+   (ci.md lists the colliding commits). Read their PR/issue if the intent isn't obvious.
+3. Resolve each hunk by hand so the result does what the base's change does **and** what your
+   spec asks. Never take one side wholesale (`checkout/restore --ours/--theirs`, `-X ours/theirs`,
+   `-s ours`) and never `git rebase --skip` — the guard blocks them.
+4. Generated files (lockfiles, snapshots, built catalogs, anything with a "generated" header):
+   never hand-merge. Take the base's version, then re-run the generator / package manager so your
+   change is re-applied on top.
+5. Re-run the full test suite, not just your tests — a clean textual merge can still be a semantic
+   conflict. If the base's change broke an assumption your code makes, fix your code and add a test
+   that covers the combination.
+6. Can't keep both (the base's change contradicts your spec, or touches auth/migrations/CI you
+   must not change) → `git rebase --abort`, change nothing, and treat it as a SPEC GAP naming the
+   conflicting commit.
+7. `git push --force-with-lease`. In build.md add `## Round N conflict fix`: one line per file —
+   `<file>: base did <X> (<sha>), branch did <Y>, kept both by <Z>`. Reviewers check exactly these.
 Reply with one line: tests green/red + commit count + PR number.

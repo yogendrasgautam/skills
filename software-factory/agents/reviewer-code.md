@@ -21,6 +21,10 @@ Blockers = missing/wrong acceptance criteria, failing tests, hard standard viola
   `git diff <Previous round head>..<Head>`, and check every earlier `[blocker]` of yours is fixed.
   A new `[blocker]` must be on lines the fix diff changed, or a regression it causes. Something
   you only now notice in already-reviewed code is a `[nit]` prefixed `late:` — the approver weighs it.
+- **After a conflict fix** (build.md has `## Round N conflict fix`): for each file it lists, compare
+  the resolution with both sides — `git log -p <merge-base>..<base> -- <file>` and the branch's
+  change. A resolution that drops the base's behaviour, or the branch's, is a `[blocker]`; so is a
+  hand-edited generated file.
 
 ## Inputs
 - `factory/profile.md` (stack, test cmd, `skills_dir`), `factory/jobs/<id>/spec.md`, `factory/jobs/<id>/build.md`.
