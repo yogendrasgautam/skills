@@ -67,8 +67,8 @@ grill (you) ─► ADRs + decisions ─► planner ─► GitHub epic + ticket i
   test, max review rounds), and reviews → approval → merge are pinned to one commit — anything
   pushed after approval goes back to review.
 - **Guard hook** (`hooks/guard.py`, PreToolUse on Bash): for the factory's agents always, and for
-  your session while a run is in progress, blocks pushes to `main` (by name, as `HEAD`, or a
-  bare `git push` while on it), `--force`, force pushes outside `factory/*` or without
+  your session while a run is in progress, blocks pushes to `main` (by name, or as `HEAD` while
+  on it), pushes that name no branch, `--force`, force pushes outside `factory/*` or without
   `--force-if-includes`, `--no-verify`,
   `--admin`, agent-issued merges, merges not pinned with `--match-head-commit`, and conflict
   "resolutions" that pick a side (`--ours`/`--theirs`, `-X ours|theirs`, `rebase --skip`). Outside a

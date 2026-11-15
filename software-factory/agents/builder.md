@@ -55,8 +55,10 @@ You build one factory job. You are non-interactive. You may be resumed later wit
   Body = 3–6 bullet summary + `Closes #<issue>` (for a stacked PR use `Part of #<issue>` — GitHub
   only auto-closes on merge to the default branch; the orchestrator closes it after retargeting)
   + a line `Base: <base>`. Print the PR number in your reply.
-- On later rounds (resumed), commit and `git push` to the same branch; do not open a new PR.
-- If `git push` or `gh` fails (auth, no remote), stop and report it in build.md and your reply.
+- On later rounds (resumed), commit and `git -C .worktrees/<id> push origin factory/<id>`; do not open a
+  new PR. Always name the branch — the guard blocks a bare `git push`, which goes wherever git
+  config says.
+- If the push or `gh` fails (auth, no remote), stop and report it in build.md and your reply.
 
 ## Output: factory/jobs/<id>/build.md (in the main checkout, not the worktree)
 ```

@@ -56,8 +56,32 @@ class CheckTest(unittest.TestCase):
                     "git push --force-with-lease --force-if-includes origin feature/x",
                     "git push --force-with-lease --force-if-includes origin main",
                     "git push origin +factory/1-x",  # plain force via +refspec
+                    # + overrides the lease
+                    "git push --force-with-lease --force-if-includes origin +factory/1-x",
+                    # a lease on the tracking ref is a bare lease
+                    "git push --force-with-lease=factory/1-x:origin/factory/1-x origin factory/1-x",
+                    "git push --force-with-lease=factory/1-x:abc1234 origin factory/1-x",
+                    "git push -uf origin factory/1-x",  # clustered short flags
+                    "git push --forc origin factory/1-x",  # unique-prefix long options
+                    "git push --force-with-leas origin feature/x",
+                    "git push --force-with-leas origin factory/1-x",
+                    "git push --force-with-lease --force-if-includes --no-force-if-includes "
+                    "origin factory/1-x",
+                    "git push --no-verif origin factory/1-x",
                     "git push --force-with-lease --force-if-includes"):  # branch unknown
             self.assertTrue(self.blocked(cmd), cmd)
+
+    def test_destination_must_be_known(self):
+        for cmd in ("git push", "git push origin", "git push -u origin",
+                    "git push origin HEAD:heads/main", "git push origin refs/heads/main",
+                    "git push origin :main", "git push --delete origin main",
+                    "git push origin 'refs/heads/*:refs/heads/*'",
+                    "git push -o ci.skip origin main"):
+            self.assertTrue(self.blocked(cmd), cmd)
+        for cmd in ("git push origin factory/1-x", "git push -u origin factory/1-x",
+                    "git push -o ci.skip origin factory/1-x", "git push --tags",
+                    "git push origin HEAD:factory/1-x", "git push origin refs/tags/v1"):
+            self.assertFalse(self.blocked(cmd), cmd)
 
     def test_conflicts_resolved_by_intent(self):
         for cmd in ("git checkout --ours src/a.py", "git -C .worktrees/1-x checkout --theirs .",
@@ -95,19 +119,46 @@ class CurrentBranchTest(unittest.TestCase):
 
     def test_on_main(self):
         self.on("main")
-        for cmd in ("git push", "git push origin HEAD", "git push origin +HEAD",
+        for cmd in ("git push origin HEAD", "git push origin @", "git push origin +HEAD",
                     "git push --force-with-lease --force-if-includes origin HEAD"):
             self.assertTrue(self.blocked(cmd), cmd)
-        self.assertTrue(self.blocked("cd %s && git push" % self.repo, cwd="/"))
-        self.assertTrue(self.blocked("git -C %s push origin HEAD" % self.repo, cwd="/"))
+        for cmd in ("cd %s && git push origin HEAD", "git -C %s push origin HEAD",
+                    "(cd %s && git push origin HEAD)", "pushd %s && git push origin @",
+                    "cd -- %s && git push origin HEAD"):
+            self.assertTrue(self.blocked(cmd % self.repo, cwd="/"), cmd)
 
     def test_on_factory_branch(self):
         self.on("factory/1-x")
-        for cmd in ("git push", "git push origin HEAD",
-                    "git push --force-with-lease --force-if-includes",
+        for cmd in ("git push origin HEAD", "git push origin @",
                     "git push --force-with-lease --force-if-includes origin HEAD"):
             self.assertFalse(self.blocked(cmd), cmd)
         self.assertTrue(self.blocked("git push --force-with-lease origin HEAD"))
+        self.assertFalse(self.blocked("(cd %s && git push origin HEAD)" % self.repo, cwd="/"))
+
+    def test_expands_home_and_env(self):
+        self.on("factory/1-x")
+        os.environ["GUARD_TEST_REPO"] = self.repo
+        self.addCleanup(os.environ.pop, "GUARD_TEST_REPO")
+        self.assertFalse(self.blocked('cd "$GUARD_TEST_REPO" && git push origin HEAD', cwd="/"))
+        self.assertFalse(self.blocked("git -C $GUARD_TEST_REPO push origin HEAD", cwd="/"))
+        self.on("main")
+        self.assertTrue(self.blocked('cd "$GUARD_TEST_REPO" && git push origin HEAD', cwd="/"))
+
+    def test_unknown_directory_blocks_head_pushes_only(self):
+        self.on("factory/1-x")
+        for cmd in ('cd "$NO_SUCH_GUARD_VAR_X/r" && git push origin HEAD',
+                    "cd - && git push origin HEAD", "popd && git push origin @",
+                    "git -C $(pwd) push origin HEAD"):
+            self.assertTrue(self.blocked(cmd), cmd)
+        self.assertFalse(self.blocked("cd - && git push origin factory/1-x"))
+
+    def test_subshell_does_not_leak_its_directory(self):
+        other = tempfile.TemporaryDirectory()
+        self.addCleanup(other.cleanup)
+        subprocess.run(["git", "-C", other.name, "init", "-q", "-b", "main"], check=True)
+        self.on("factory/1-x")  # session cwd: a factory worktree; the subshell visits main
+        self.assertFalse(self.blocked("(cd %s && ls); git push origin HEAD" % other.name))
+        self.assertTrue(self.blocked("cd %s; git push origin HEAD" % other.name))
 
 
 class ScopeTest(unittest.TestCase):
