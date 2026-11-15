@@ -27,7 +27,9 @@ class CheckTest(unittest.TestCase):
 
     def test_branch_push_allowed(self):
         for cmd in ("git -C .worktrees/1-x push -u origin factory/1-x",
-                    "git push --force-with-lease", "git push origin factory/1-main-page",
+                    "git push --force-with-lease --force-if-includes origin factory/1-x",
+                    "git push --force-with-lease=factory/1-x:%s origin factory/1-x" % SHA,
+                    "git push origin factory/1-main-page",
                     "git push origin factory-evidence", "git log main..factory/1-x"):
             self.assertFalse(self.blocked(cmd), cmd)
 
@@ -48,6 +50,15 @@ class CheckTest(unittest.TestCase):
         self.assertTrue(self.blocked(
             "gh pr merge 5 --squash --admin --match-head-commit " + SHA, agent=False))
 
+    def test_force_push_rules(self):
+        for cmd in ("git push --force-with-lease origin factory/1-x",  # bare lease
+                    "git push --force-with-lease=factory/1-x origin factory/1-x",  # no sha
+                    "git push --force-with-lease --force-if-includes origin feature/x",
+                    "git push --force-with-lease --force-if-includes origin main",
+                    "git push origin +factory/1-x",  # plain force via +refspec
+                    "git push --force-with-lease --force-if-includes"):  # branch unknown
+            self.assertTrue(self.blocked(cmd), cmd)
+
     def test_conflicts_resolved_by_intent(self):
         for cmd in ("git checkout --ours src/a.py", "git -C .worktrees/1-x checkout --theirs .",
                     "git restore --theirs src/a.py", "git rebase -X theirs origin/main",
@@ -64,6 +75,39 @@ class CheckTest(unittest.TestCase):
         self.assertTrue(self.blocked("gh api -X DELETE repos/o/r/branches/main/protection"))
         self.assertFalse(self.blocked("gh api repos/o/r/branches/main/protection"))
         self.assertFalse(self.blocked("gh pr view 5 --json state"))
+
+
+class CurrentBranchTest(unittest.TestCase):
+    """A push that names no branch, or HEAD, goes wherever the checkout is."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.repo = self.tmp.name
+        subprocess.run(["git", "-C", self.repo, "init", "-q", "-b", "main"], check=True)
+
+    def on(self, branch):
+        subprocess.run(["git", "-C", self.repo, "symbolic-ref", "HEAD", "refs/heads/" + branch],
+                       check=True)
+
+    def blocked(self, cmd, cwd=None):
+        return guard.check(cmd, True, cwd or self.repo) is not None
+
+    def test_on_main(self):
+        self.on("main")
+        for cmd in ("git push", "git push origin HEAD", "git push origin +HEAD",
+                    "git push --force-with-lease --force-if-includes origin HEAD"):
+            self.assertTrue(self.blocked(cmd), cmd)
+        self.assertTrue(self.blocked("cd %s && git push" % self.repo, cwd="/"))
+        self.assertTrue(self.blocked("git -C %s push origin HEAD" % self.repo, cwd="/"))
+
+    def test_on_factory_branch(self):
+        self.on("factory/1-x")
+        for cmd in ("git push", "git push origin HEAD",
+                    "git push --force-with-lease --force-if-includes",
+                    "git push --force-with-lease --force-if-includes origin HEAD"):
+            self.assertFalse(self.blocked(cmd), cmd)
+        self.assertTrue(self.blocked("git push --force-with-lease origin HEAD"))
 
 
 class ScopeTest(unittest.TestCase):

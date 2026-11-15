@@ -6,7 +6,10 @@ In scope only for (a) this plugin's own agents (`agent_type` = software-factory:
 passes untouched, so the plugin never interferes with ordinary work.
 
 Blocks (exit 2, reason on stderr):
-  - git push to main/master, plain --force / -f, --mirror, --all
+  - git push to main/master — by name, as `HEAD`, or as a bare `git push` while on it
+  - plain --force / -f / `+refspec`, --mirror, --all; any force push to a branch other than
+    factory/*; a bare --force-with-lease without --force-if-includes (a background fetch
+    would let it clobber commits it never saw)
   - --no-verify on git commit / git push
   - gh pr merge from a factory agent (only the orchestrator merges)
   - gh pr merge by the orchestrator without --squash + --match-head-commit, or with --admin
@@ -25,6 +28,7 @@ import json
 import os
 import re
 import shlex
+import subprocess
 import sys
 
 PLUGIN = "software-factory"
@@ -56,13 +60,83 @@ def git_sub(toks):
     return None, []
 
 
-def is_protected_ref(tok):
-    ref = tok.split(":")[-1]
-    if ref.startswith("+"):
-        ref = ref[1:]
-    if ref.startswith("refs/heads/"):
-        ref = ref[len("refs/heads/"):]
-    return ref in PROTECTED
+def git_cwd(toks, cwd):
+    """The directory a git invocation runs in: its -C (relative to cwd), else cwd."""
+    if "git" not in toks:
+        return cwd
+    t = toks[toks.index("git") + 1:]
+    for i, tok in enumerate(t[:-1]):
+        if tok == "-C":
+            return os.path.join(cwd or "", t[i + 1]) if cwd else t[i + 1]
+    return cwd
+
+
+def current_branch(cwd):
+    """Branch checked out in cwd, or None when it can't be told (no repo, detached, error)."""
+    if not cwd:
+        return None
+    try:
+        p = subprocess.run(["git", "-C", cwd, "symbolic-ref", "--short", "-q", "HEAD"],
+                           stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                           universal_newlines=True, timeout=5)
+    except Exception:  # noqa: BLE001
+        return None
+    return p.stdout.strip() or None
+
+
+PUSH_VALUE_OPTS = ("-o", "--push-option", "--repo", "--receive-pack", "--exec")
+
+
+def push_targets(args, cwd):
+    """[(destination branch or None, forced by a +refspec)] for a git push's arguments."""
+    positional, skip = [], False
+    for t in args:
+        if skip:
+            skip = False
+        elif t in PUSH_VALUE_OPTS:
+            skip = True
+        elif not t.startswith("-"):
+            positional.append(t)
+    refspecs = positional[1:]
+    if not refspecs:
+        return [(current_branch(cwd), False)]
+    out = []
+    for r in refspecs:
+        plus = r.startswith("+")
+        src, _, dst = r.lstrip("+").partition(":")
+        dest = dst or src
+        if dest == "HEAD":
+            dest = current_branch(cwd)
+        if dest and dest.startswith("refs/heads/"):
+            dest = dest[len("refs/heads/"):]
+        out.append((dest, plus))
+    return out
+
+
+def check_push(args, cwd):
+    if any(t in ("--force", "-f", "--mirror", "--all") for t in args):
+        return ("git push --force/--mirror/--all is not allowed; use "
+                "--force-with-lease --force-if-includes on factory/<id>")
+    if "--no-verify" in args:
+        return "--no-verify is not allowed"
+    leases = [t for t in args if t.startswith("--force-with-lease")]
+    targets = push_targets(args, cwd)
+    if any(dest in PROTECTED for dest, _ in targets):
+        return "nothing is pushed to main directly — work reaches main only through a merged PR"
+    if any(plus for _, plus in targets) and not leases:
+        return "a +refspec is a plain force push; use --force-with-lease --force-if-includes"
+    if leases or any(plus for _, plus in targets):
+        for dest, _ in targets:
+            if dest is None:
+                return ("force push with no branch I can tell: name it, "
+                        "`git push --force-with-lease --force-if-includes origin factory/<id>`")
+            if not dest.startswith("factory/"):
+                return "force pushes are only for factory/<id> branches, not %s" % dest
+        explicit = all(":" in t.partition("=")[2] for t in leases)
+        if not explicit and "--force-if-includes" not in args:
+            return ("bare --force-with-lease can clobber commits a background fetch pulled in; "
+                    "add --force-if-includes (or use --force-with-lease=<branch>:<expected sha>)")
+    return None
 
 
 SIDE_PICK = "resolve conflicts by intent (keep both changes), never by picking a side wholesale"
@@ -83,20 +157,16 @@ def picks_side(sub, args):
     return False
 
 
-def check_segment(toks, is_agent):
+def check_segment(toks, is_agent, cwd=None):
     sub, args = git_sub(toks)
     if picks_side(sub, args):
         return SIDE_PICK
     if sub == "rebase" and "--skip" in args:
         return "git rebase --skip drops a commit; resolve it, or --abort and report the conflict"
     if sub == "push":
-        if any(t in ("--force", "-f", "--mirror", "--all") for t in args):
-            return "git push --force/--mirror/--all is not allowed; use --force-with-lease on factory/<id>"
-        if "--no-verify" in args:
-            return "--no-verify is not allowed"
-        positional = [t for t in args if not t.startswith("-")]
-        if any(is_protected_ref(t) for t in positional[1:]):
-            return "nothing is pushed to main directly — work reaches main only through a merged PR"
+        reason = check_push(args, git_cwd(toks, cwd))
+        if reason:
+            return reason
     if sub == "commit" and ("--no-verify" in args or "-n" in args):
         return "--no-verify is not allowed"
     if "gh" in toks:
@@ -119,9 +189,14 @@ def check_segment(toks, is_agent):
     return None
 
 
-def check(command, is_agent):
+def check(command, is_agent, cwd=None):
     for seg in SPLIT_RE.split(command):
-        reason = check_segment(tokens(seg), is_agent)
+        toks = tokens(seg)
+        if toks[:1] == ["cd"] and len(toks) > 1:  # follow `cd x && git push`
+            target = os.path.expanduser(toks[1])
+            cwd = os.path.join(cwd, target) if cwd else target
+            continue
+        reason = check_segment(toks, is_agent, cwd)
         if reason:
             return reason
     return None
@@ -143,7 +218,8 @@ def main():
         is_agent, scoped = in_scope(data)
         if not scoped:
             return 0
-        reason = check(str((data.get("tool_input") or {}).get("command") or ""), is_agent)
+        reason = check(str((data.get("tool_input") or {}).get("command") or ""), is_agent,
+                       data.get("cwd"))
     except Exception:  # noqa: BLE001 — a broken guard must not brick the session
         return 0
     if reason:

@@ -43,8 +43,11 @@ You build one factory job. You are non-interactive. You may be resumed later wit
 ## Never merge
 - **You never merge to `main`, never push to `main`, never rebase onto it unasked.** Work reaches
   `main` only through a pull request that the orchestrator merges. Never run `gh pr merge`,
-  `git push --force` (only `--force-with-lease`, only when asked to rebase) or `--no-verify`:
-  the plugin's guard hook blocks them, and a blocked command is not something to work around.
+  `git push --force` or `--no-verify`: the plugin's guard hook blocks them, and a blocked
+  command is not something to work around.
+- The only force push is `git push --force-with-lease --force-if-includes origin factory/<id>`,
+  after a rebase you were asked for. It names your branch, and `--force-if-includes` refuses if
+  the remote has commits you never pulled.
 - Push everything you commit before you reply — reviews are pinned to the pushed head commit.
 - After the first green build: `git -C .worktrees/<id> push -u origin factory/<id>`, then open
   the PR against the **Base branch** from your prompt:
@@ -75,7 +78,7 @@ failing check) and fix the cause, never by skipping, deleting or loosening the c
 `.github/` or other CI config; re-run tests, commit, push, and
 append `## Round N fixes` to build.md listing each blocker → fix (or why you disagree).
 If your prompt says "rebase onto <new base>" (a stacked base moved), rebase your branch onto it,
-re-run tests, `git push --force-with-lease`, and note it in build.md — resolving any conflict as below.
+re-run tests, `git push --force-with-lease --force-if-includes origin factory/<id>`, and note it in build.md — resolving any conflict as below.
 
 ## Resolving conflicts
 A conflict means someone else's merged work and yours touch the same lines. Both are wanted;
@@ -96,6 +99,6 @@ the job is to keep **both behaviours**, not to pick a winner.
 6. Can't keep both (the base's change contradicts your spec, or touches auth/migrations/CI you
    must not change) → `git rebase --abort`, change nothing, and treat it as a SPEC GAP naming the
    conflicting commit.
-7. `git push --force-with-lease`. In build.md add `## Round N conflict fix`: one line per file —
+7. `git push --force-with-lease --force-if-includes origin factory/<id>`. In build.md add `## Round N conflict fix`: one line per file —
    `<file>: base did <X> (<sha>), branch did <Y>, kept both by <Z>`. Reviewers check exactly these.
 Reply with one line: tests green/red + commit count + PR number.

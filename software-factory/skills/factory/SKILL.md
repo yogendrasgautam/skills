@@ -407,7 +407,7 @@ Repeat until nothing is runnable or in flight (`next` = at most one new job):
    - in `spec` (nothing built yet): `git -C .worktrees/<dep> rebase factory/<id>` yourself;
    - in `needs-human`: leave it, add to its PR comment that its base moved;
    - otherwise: `F transition <dep> build` (if not already there), `SendMessage` its builder
-     `Base changed: rebase onto factory/<id>, re-run tests, push --force-with-lease, note it in build.md`
+     `Base changed: rebase onto factory/<id>, re-run tests, push --force-with-lease --force-if-includes origin factory/<dep>, note it in build.md`
      (fresh builder if it can't be resumed); its next review round is `--mode full`. This does
      not reset its round budget (it is not a human rework).
 
@@ -505,7 +505,7 @@ Repeat until nothing is runnable or in flight (`next` = at most one new job):
       `git log --oneline <merge-base>..origin/<base> -- <files>` (the commits on the base that
       collided). Then by exit code:
       - 11 → route as `code` with the message
-        `Round N: PR #<pr> conflicts with <base> in <files> — factory/jobs/<id>/round-N/ci.md. Rebase onto origin/<base> and resolve by intent (builder.md "Resolving conflicts"), re-run tests, push --force-with-lease, update build.md ("Round N conflict fix").`
+        `Round N: PR #<pr> conflicts with <base> in <files> — factory/jobs/<id>/round-N/ci.md. Rebase onto origin/<base> and resolve by intent (builder.md "Resolving conflicts"), re-run tests, push --force-with-lease --force-if-includes origin factory/<id>, update build.md ("Round N conflict fix").`
         A rebase rewrites history, so the next round is `F round-start … --mode full`, and run
         **Base moved** for its dependents.
       - 12 → **flag** with its reason: a conflict in `risk_globs` is a human's call, and a job that
@@ -532,7 +532,7 @@ Repeat until nothing is runnable or in flight (`next` = at most one new job):
    - PR base ≠ `main` (stacked): wait until the base blocker is `merged`. Then **restack**: in the
      job's worktree `git fetch origin && git rebase --onto origin/main factory/<blocker-id>`
      (squash-merged base: the blocker's branch is gone, so use the blocker's `approvedSha` from the
-     board — its pre-merge tip — as the `--onto` upstream); `git push --force-with-lease`; `gh pr edit <pr> --base main`; set
+     board — its pre-merge tip — as the `--onto` upstream); `git push --force-with-lease --force-if-includes origin factory/<id>`; `gh pr edit <pr> --base main`; set
      `base: main`. Rebase conflict → `git rebase --abort`, then the **CI gate**'s conflict path (step 5). If the
      restacked diff's `git patch-id` differs from before the rebase, send the job back to
      **Review** (`F round-start <id> --sha <new head> --mode full`, then UX test again). Same

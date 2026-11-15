@@ -76,6 +76,11 @@ class SkillRulesTest(unittest.TestCase):
         self.assertIn("## Resolving conflicts", builder)
         self.assertIn("conflict fix", builder)
         self.assertIn("zdiff3", builder)
+
+    def test_force_pushes_are_safe(self):
+        for text in (self.skill, read("agents", "builder.md")):
+            for m in re.finditer(r"force-with-lease[^`\n]*", text):
+                self.assertIn("--force-if-includes", m.group(0), m.group(0))
         self.assertIn("conflict fix", read("agents", "reviewer-code.md"))
 
     def test_plugin_manifest(self):
