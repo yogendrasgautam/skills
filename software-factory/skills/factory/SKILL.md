@@ -242,6 +242,13 @@ Shape (written by `F`; shown so you can read it — `F show <id>` prints one job
    dev_ready: <URL that answers when the app is up, default dev_url>
    dev_port: <port>
    dev_env: <VAR=value … or none>   # non-secret only
+   # Optional persistent baseline for the "before" run (omit to use a throwaway base worktree + dev_start).
+   # baseline_url REMOTE (staging etc.) → used as-is, no setup, baseline_start not needed. LOCAL → baseline_start required.
+   baseline_start: <local baselines only; cmd, run from repo root: fetch latest origin/<base>, rebuild + (re)start the baseline app, exit 0 when ready; e.g. a script around docker compose up -d --build>
+   baseline_stop: <cmd or none>     # default none: baseline is left running
+   baseline_url: <e.g. http://localhost:3000>
+   baseline_ready: <URL, default baseline_url>
+   baseline_timeout: <seconds, default 600>
    ux_login: <steps to sign in using env var NAMES for credentials, or none>
    ux_tools: <abs path>/factory/.ux-tools (playwright <version>)
    conventions: <bullets: layout, naming, test style, standards docs found>
@@ -254,7 +261,10 @@ Shape (written by `F`; shown so you can read it — `F show <id>` prints one job
    for the steps and the env var **names** (never the values). Then install the browser tools
    (once; re-run on plugin update): `mkdir -p factory/.ux-tools && npm --prefix factory/.ux-tools
    install playwright && npx --prefix factory/.ux-tools playwright install chromium`, and record
-   the installed version. No Node → say so; UI jobs will be `BLOCKED` until it is fixed.
+   the installed version. If the repo already runs a deployed/compose baseline (docker-compose with
+   the app on fixed ports), offer to write `baseline_*` (a small script that fetches `origin/<base>`
+   and rebuilds it) so the "before" screenshots always come from the latest base, not a stale deploy.
+   No Node → say so; UI jobs will be `BLOCKED` until it is fixed.
    `risk_globs`: start from the default, add what this repo's layout calls for, and confirm the
    list with the user in the same question.
    Empty repo → `stack: undecided`; the grilling picks the stack, the first ticket scaffolds it,

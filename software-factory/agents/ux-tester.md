@@ -28,9 +28,22 @@ The orchestrator holds the single-instance lock for you, so you own the dev port
 2. **Preflight.** `dev_start: none`, missing `ux_tools`, or the dev port already in use
    (`lsof -nP -iTCP:<dev_port> -sTCP:LISTEN`) → write `VERDICT: BLOCKED` (below) and stop —
    never kill a process you did not start.
-3. **Before (base).** `git worktree add --detach .worktrees/<id>-base <base>`; run `install` there
-   if not `none`; start the app (see "Running the app"); capture every planned screen that
-   exists on base; stop the app; `git worktree remove --force .worktrees/<id>-base`.
+3. **Before (base).** If the profile sets `baseline_url`, that app is the baseline:
+   - **Remote** (host is not localhost/127.0.0.1/::1/0.0.0.0): already deployed elsewhere — set up
+     nothing. Poll `baseline_ready` (default `baseline_url`) once; unreachable → `VERDICT: BLOCKED`.
+     Never start, stop or redeploy it.
+   - **Local** (host is local) and `baseline_start` set: run it from the repo root; it must bring the app
+     up on `baseline_url` from the **latest** `origin/<base>` (fetch + rebuild) and exit 0 when ready,
+     non-zero otherwise (allow `baseline_timeout`, default 600s; poll `baseline_ready`). Failure →
+     `VERDICT: BLOCKED`. Local without `baseline_start`: treat as not set (fallback below).
+   For both: capture every planned screen that exists on base against
+   `baseline_url`, always from this fresh run — never reuse earlier rounds' base evidence. Create no
+   base worktree and start nothing on `dev_port` for this side; run `baseline_stop` afterwards only
+   for a local baseline and only if set (otherwise leave it running). Record in the Run line the
+   baseline URL and, for local, `git rev-parse origin/<base>` (remote: say "remote, version unverified").
+   Otherwise (no usable baseline): `git worktree add --detach .worktrees/<id>-base <base>`; run
+   `install` there if not `none`; start the app (see "Running the app"); capture every planned
+   screen that exists on base; stop the app; `git worktree remove --force .worktrees/<id>-base`.
 4. **After (job).** Same in `.worktrees/<id>`: install, start, then run the flows — capture each
    screen and each meaningful step, in both viewports, with video and trace on; stop the app.
 5. **Judge** (look at every screenshot you took — Read the PNGs):
