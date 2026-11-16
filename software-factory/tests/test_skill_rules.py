@@ -78,6 +78,24 @@ class SkillRulesTest(unittest.TestCase):
         self.assertIn("zdiff3", builder)
         self.assertIn("conflict fix", read("agents", "reviewer-code.md"))
 
+    def test_force_pushes_are_safe(self):
+        for text in (self.skill, read("agents", "builder.md")):
+            for m in re.finditer(r"force-with-lease[^`\n]*", text):
+                self.assertIn("--force-if-includes", m.group(0), m.group(0))
+
+    def test_prompts_only_use_pushes_the_guard_allows(self):
+        sys.path.insert(0, os.path.join(ROOT, "hooks"))
+        import guard
+        found = 0
+        for text in (self.skill, read("agents", "builder.md")):
+            for cmd in re.findall(r"`(git(?: -C \S+)? push[^`]*)`", text.replace("\n", " ")):
+                cmd = re.sub(r"\s+", " ", cmd)
+                if cmd in ("git push", "git push --force", "git push origin main"):
+                    continue  # quoted as forbidden
+                found += 1
+                self.assertIsNone(guard.check(cmd.replace("<", "").replace(">", ""), True), cmd)
+        self.assertGreater(found, 3)
+
     def test_plugin_manifest(self):
         m = json.loads(read(".claude-plugin", "plugin.json"))
         self.assertEqual(m["name"], "software-factory")

@@ -6,7 +6,12 @@ In scope only for (a) this plugin's own agents (`agent_type` = software-factory:
 passes untouched, so the plugin never interferes with ordinary work.
 
 Blocks (exit 2, reason on stderr):
-  - git push to main/master, plain --force / -f, --mirror, --all
+  - git push to main/master — by name (any spelling), or as `HEAD` / `@` while on it
+  - a push that names no branch, or whose branch can't be told (it would go wherever git
+    config or an unresolvable directory says)
+  - plain --force / -f (also clustered, -uf) / `+refspec`, --mirror, --all; any force push to
+    a branch other than factory/*; --force-with-lease without --force-if-includes or a
+    <branch>:<full sha> pin (a background fetch would let it clobber commits it never saw)
   - --no-verify on git commit / git push
   - gh pr merge from a factory agent (only the orchestrator merges)
   - gh pr merge by the orchestrator without --squash + --match-head-commit, or with --admin
@@ -25,6 +30,7 @@ import json
 import os
 import re
 import shlex
+import subprocess
 import sys
 
 PLUGIN = "software-factory"
@@ -56,13 +62,146 @@ def git_sub(toks):
     return None, []
 
 
-def is_protected_ref(tok):
-    ref = tok.split(":")[-1]
-    if ref.startswith("+"):
-        ref = ref[1:]
-    if ref.startswith("refs/heads/"):
-        ref = ref[len("refs/heads/"):]
-    return ref in PROTECTED
+def expand(path):
+    """~ and $VAR expanded; None when something is left that only the shell could resolve."""
+    path = os.path.expandvars(os.path.expanduser(path))
+    return None if re.search(r"[$`~*?]", path) else path
+
+
+def join(cwd, path):
+    path = expand(path)
+    if path is None:
+        return None
+    if os.path.isabs(path):
+        return path
+    return os.path.join(cwd, path) if cwd else None
+
+
+def git_cwd(toks, cwd):
+    """The directory a git invocation runs in: its -C (relative to cwd), else cwd."""
+    if "git" not in toks:
+        return cwd
+    t = toks[toks.index("git") + 1:]
+    for i, tok in enumerate(t[:-1]):
+        if tok == "-C":
+            cwd = join(cwd, t[i + 1])
+        elif not tok.startswith("-") and (i == 0 or t[i - 1] not in ("-C", "-c")):
+            break
+    return cwd
+
+
+def current_branch(cwd):
+    """Branch checked out in cwd, or None when it can't be told (no repo, detached, error)."""
+    if not cwd:
+        return None
+    try:
+        p = subprocess.run(["git", "-C", cwd, "symbolic-ref", "--short", "-q", "HEAD"],
+                           stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                           universal_newlines=True, timeout=5)
+    except Exception:  # noqa: BLE001
+        return None
+    return p.stdout.strip() or None
+
+
+# git accepts any unique prefix of a long option, and clusters short ones (-uf).
+PUSH_LONG = ("all", "atomic", "branches", "delete", "dry-run", "exec", "follow-tags", "force",
+             "force-if-includes", "force-with-lease", "ipv4", "ipv6", "mirror",
+             "no-atomic", "no-follow-tags", "no-force-if-includes", "no-force-with-lease",
+             "no-recurse-submodules", "no-signed", "no-thin", "no-verify", "porcelain",
+             "progress", "prune", "push-option", "quiet", "receive-pack", "recurse-submodules",
+             "repo", "set-upstream", "signed", "tags", "thin", "verbose", "verify")
+PUSH_LONG_VALUE = ("exec", "push-option", "receive-pack", "repo")
+SHA_RE = re.compile(r"^(?:[0-9a-f]{40}|[0-9a-f]{64})$")
+
+
+def parse_push(args):
+    """(options, positionals). options: [(name, value)], long names resolved from prefixes
+    (an ambiguous prefix yields every candidate), short clusters split into letters."""
+    opts, positional = [], []
+    i = 0
+    while i < len(args):
+        t = args[i]
+        i += 1
+        if t == "--":
+            positional += args[i:]
+            break
+        if t.startswith("--"):
+            name, eq, value = t[2:].partition("=")
+            names = [name] if name in PUSH_LONG else [n for n in PUSH_LONG if n.startswith(name)]
+            if not eq and any(n in PUSH_LONG_VALUE for n in names) and i < len(args):
+                value = args[i]
+                i += 1
+            opts += [(n, value) for n in names or [name]]
+        elif t.startswith("-") and len(t) > 1:
+            for j, ch in enumerate(t[1:], 1):
+                if ch == "o":  # -o <value> / -o<value>
+                    if j == len(t) - 1:
+                        i += 1
+                    break
+                opts.append((ch, ""))
+        else:
+            positional.append(t)
+    return opts, positional
+
+
+def branch_name(ref):
+    for prefix in ("refs/heads/", "heads/"):
+        if ref.startswith(prefix):
+            return ref[len(prefix):]
+    return ref
+
+
+def push_targets(refspecs, cwd):
+    """[(destination branch, or None when it can't be told; forced by a +refspec)]."""
+    out = []
+    for r in refspecs:
+        plus = r.startswith("+")
+        src, _, dst = r.lstrip("+").partition(":")
+        dest = dst or src
+        if dest in ("HEAD", "@"):
+            dest = current_branch(cwd)
+        elif not dest or re.search(r"[*$`@^~]", dest):  # wildcard, shell or rev syntax
+            dest = None
+        out.append((branch_name(dest) if dest else None, plus))
+    return out
+
+
+NAME_IT = "name the branch you push: `git push origin factory/<id>`"
+
+
+def check_push(args, cwd):
+    opts, positional = parse_push(args)
+    names = set(n for n, _ in opts)
+    if names & set(("force", "f", "mirror", "all", "branches")):
+        return ("git push --force/--mirror/--all is not allowed; use "
+                "--force-with-lease --force-if-includes on factory/<id>")
+    if "no-verify" in names:
+        return "--no-verify is not allowed"
+    refspecs = positional[1:]
+    if not refspecs:
+        if names & set(("tags", "follow-tags")) and "force-with-lease" not in names:
+            return None
+        return ("a push with no branch goes wherever git config says (upstream, push.default); "
+                + NAME_IT)
+    targets = push_targets(refspecs, cwd)
+    if any(dest in PROTECTED for dest, _ in targets):
+        return "nothing is pushed to main directly — work reaches main only through a merged PR"
+    if any(plus for _, plus in targets):
+        return ("a +refspec is a plain force push (it overrides any lease); use "
+                "--force-with-lease --force-if-includes without the +")
+    if any(dest is None for dest, _ in targets):
+        return "can't tell which branch this pushes to; " + NAME_IT
+    leases = [v for n, v in opts if n == "force-with-lease"]
+    if leases:
+        for dest, _ in targets:
+            if not dest.startswith("factory/"):
+                return "force pushes are only for factory/<id> branches, not %s" % dest
+        pinned = all(SHA_RE.match(v.partition(":")[2]) for v in leases)
+        includes = "force-if-includes" in names and "no-force-if-includes" not in names
+        if not pinned and not includes:
+            return ("--force-with-lease alone can clobber commits a background fetch pulled in; "
+                    "add --force-if-includes (or pin it: --force-with-lease=<branch>:<full sha>)")
+    return None
 
 
 SIDE_PICK = "resolve conflicts by intent (keep both changes), never by picking a side wholesale"
@@ -83,20 +222,16 @@ def picks_side(sub, args):
     return False
 
 
-def check_segment(toks, is_agent):
+def check_segment(toks, is_agent, cwd=None):
     sub, args = git_sub(toks)
     if picks_side(sub, args):
         return SIDE_PICK
     if sub == "rebase" and "--skip" in args:
         return "git rebase --skip drops a commit; resolve it, or --abort and report the conflict"
     if sub == "push":
-        if any(t in ("--force", "-f", "--mirror", "--all") for t in args):
-            return "git push --force/--mirror/--all is not allowed; use --force-with-lease on factory/<id>"
-        if "--no-verify" in args:
-            return "--no-verify is not allowed"
-        positional = [t for t in args if not t.startswith("-")]
-        if any(is_protected_ref(t) for t in positional[1:]):
-            return "nothing is pushed to main directly — work reaches main only through a merged PR"
+        reason = check_push(args, git_cwd(toks, cwd))
+        if reason:
+            return reason
     if sub == "commit" and ("--no-verify" in args or "-n" in args):
         return "--no-verify is not allowed"
     if "gh" in toks:
@@ -119,11 +254,38 @@ def check_segment(toks, is_agent):
     return None
 
 
-def check(command, is_agent):
+def check(command, is_agent, cwd=None):
+    """Walk the command's segments, following directory changes. A directory the guard can't
+    follow becomes None, which blocks only pushes that depend on it (HEAD, @)."""
+    saved = []  # cwd before each open subshell / brace group
     for seg in SPLIT_RE.split(command):
-        reason = check_segment(tokens(seg), is_agent)
-        if reason:
-            return reason
+        toks = tokens(seg)
+        while toks and toks[0] in ("(", "{"):
+            saved.append(cwd)
+            toks = toks[1:]
+        while toks and toks[0][:1] == "(":
+            saved.append(cwd)
+            toks[0] = toks[0][1:]
+            if not toks[0]:
+                toks = toks[1:]
+        closes = 0
+        while toks and toks[-1] and set(toks[-1]) <= set(")}"):
+            closes += len(toks[-1])
+            toks = toks[:-1]
+        while toks and toks[-1].endswith(")"):
+            closes += 1
+            toks[-1] = toks[-1][:-1]
+        if toks[:1] in (["cd"], ["pushd"]):
+            rest = [t for t in toks[1:] if t != "--"]
+            cwd = join(cwd, rest[0] if rest else "~") if rest[:1] != ["-"] else None
+        elif toks[:1] == ["popd"]:
+            cwd = None
+        else:
+            reason = check_segment(toks, is_agent, cwd)
+            if reason:
+                return reason
+        for _ in range(closes):
+            cwd = saved.pop() if saved else cwd
     return None
 
 
@@ -143,7 +305,8 @@ def main():
         is_agent, scoped = in_scope(data)
         if not scoped:
             return 0
-        reason = check(str((data.get("tool_input") or {}).get("command") or ""), is_agent)
+        reason = check(str((data.get("tool_input") or {}).get("command") or ""), is_agent,
+                       data.get("cwd"))
     except Exception:  # noqa: BLE001 — a broken guard must not brick the session
         return 0
     if reason:

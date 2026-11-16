@@ -67,7 +67,9 @@ grill (you) ─► ADRs + decisions ─► planner ─► GitHub epic + ticket i
   test, max review rounds), and reviews → approval → merge are pinned to one commit — anything
   pushed after approval goes back to review.
 - **Guard hook** (`hooks/guard.py`, PreToolUse on Bash): for the factory's agents always, and for
-  your session while a run is in progress, blocks pushes to `main`, `--force`, `--no-verify`,
+  your session while a run is in progress, blocks pushes to `main` (by name, or as `HEAD` while
+  on it), pushes that name no branch, `--force`, force pushes outside `factory/*` or without
+  `--force-if-includes`, `--no-verify`,
   `--admin`, agent-issued merges, merges not pinned with `--match-head-commit`, and conflict
   "resolutions" that pick a side (`--ours`/`--theirs`, `-X ours|theirs`, `rebase --skip`). Outside a
   factory run it does nothing. It is a guardrail, not a sandbox — protect `main` on GitHub too
@@ -96,6 +98,7 @@ Dashboard: `cd factory && python3 -m http.server 8000` → http://localhost:8000
 Builders work in git worktrees (`.worktrees/<id>`, branch `factory/<id>`) and open PRs; nothing reaches `main` except a merged PR (squash, after approval + green CI, pinned to the approved commit). Anything doubtful is left open with the `needs-human-review` label.
 
 UX testing needs, for UI repos: Node (Playwright is installed into `factory/.ux-tools/` by setup),
-the dev-server fields setup writes to `profile.md` (`dev_start`, `dev_url`, `dev_port`, …), and
+the dev-server fields setup writes to `profile.md` (`dev_start`, `dev_url`, `dev_port`, …; optional
+`baseline_url` for the "before" app: a remote URL is used as-is, a local one is rebuilt from the latest base branch by `baseline_start`, e.g. via docker compose), and
 `gh` ≥ 2.99 for inline evidence (`gh pr comment --attach`; older gh falls back to an orphan
 `factory-evidence` branch). Login credentials come only from env vars named in `ux_login`.
