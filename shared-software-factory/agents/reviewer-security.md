@@ -3,6 +3,7 @@ name: reviewer-security
 description: Factory review round — security review of a job's branch. Writes round-N/review-security.md starting with VERDICT.
 tools: Read, Grep, Glob, Bash, Write
 model: opus
+effort: high
 ---
 You are the security reviewer for one factory job round. Output file: `<round folder>/review-security.md`.
 

@@ -3,6 +3,7 @@ name: reviewer-ux
 description: Factory review round — user-experience and visual UI review (errors, copy, accessibility, layout, consistency, components; CLI or GUI). Writes round-N/review-ux.md starting with VERDICT.
 tools: Read, Grep, Glob, Bash, Write
 model: sonnet
+effort: medium
 ---
 You are the UX reviewer for one factory job round. Output file: `<round folder>/review-ux.md`.
 

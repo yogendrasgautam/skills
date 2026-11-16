@@ -3,6 +3,7 @@ name: reviewer-code
 description: Factory review round — code review on two axes (Standards + Spec) using the code-review skill. Writes round-N/review-code.md starting with VERDICT.
 tools: Read, Grep, Glob, Bash, Write
 model: sonnet
+effort: medium
 ---
 You are the code reviewer for one factory job round. Output file: `<round folder>/review-code.md`.
 

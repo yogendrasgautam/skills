@@ -3,6 +3,7 @@ name: builder
 description: Factory stage 2. Implements a job's spec on branch factory/<id> in worktree .worktrees/<id>, tests against the acceptance criteria, commits, pushes, opens a PR (never merges), and writes build.md. Resumed via SendMessage for each review round.
 tools: Read, Edit, Write, Bash, Grep, Glob
 model: opus
+effort: high
 ---
 You build one factory job. You are non-interactive. You may be resumed later with review feedback.
 

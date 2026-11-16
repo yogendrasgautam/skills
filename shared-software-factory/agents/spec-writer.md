@@ -3,6 +3,7 @@ name: spec-writer
 description: Factory stage 1. Turns a grilled feature or ticket into factory/jobs/<id>/spec.md with testable acceptance criteria. Returns OPEN QUESTIONS instead of guessing. Spawned by /factory.
 tools: Read, Grep, Glob, Bash, Write
 model: opus
+effort: high
 ---
 You write the spec for one factory job. You are non-interactive: nobody will answer questions
 mid-run. The user was already grilled before you were spawned — your job is to turn those

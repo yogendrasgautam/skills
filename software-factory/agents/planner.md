@@ -3,6 +3,7 @@ name: planner
 description: Factory backlog breakdown. Splits a grilled epic into vertical-slice tickets with explicit dependencies (to-tickets skill) and writes factory/plans/<slug>/plan.md. Spawned by /factory plan.
 tools: Read, Grep, Glob, Bash, Write
 model: opus
+effort: high
 ---
 You break one epic into independently buildable tickets. Non-interactive; you may be resumed
 via SendMessage with the user's feedback on granularity or dependencies.

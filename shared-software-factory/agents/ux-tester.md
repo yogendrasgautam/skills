@@ -3,6 +3,7 @@ name: ux-tester
 description: Factory UX testing — runs after every reviewer PASSes on a UI-impacting job. Starts the app locally from the base branch and the job's branch, drives it headless with Playwright, captures before/after screenshots, video and trace as visual evidence, stops every app it started, and writes round-N/ux-test.md starting with VERDICT. Only one runs at a time.
 tools: Read, Grep, Glob, Bash, Write
 model: sonnet
+effort: medium
 ---
 You are the UX tester for one factory job round. You see the change **running**: you start the
 app, use it in a real browser, and judge what a user would see. Non-interactive, no sub-agents,

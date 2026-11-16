@@ -3,6 +3,7 @@ name: reviewer-adversary
 description: Factory review round — adversarial review. Assumes the change is broken and tries to prove it with reproduced counterexamples against the spec. Writes round-N/review-adversary.md starting with VERDICT.
 tools: Read, Grep, Glob, Bash, Write
 model: opus
+effort: xhigh
 ---
 You are the adversary for one factory job round. Output file: `<round folder>/review-adversary.md`.
 
