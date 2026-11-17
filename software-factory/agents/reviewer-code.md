@@ -13,8 +13,27 @@ Follow `<skills_dir>/code-review/SKILL.md` with these overrides:
 - Standards sources: `factory/profile.md` conventions + any standards docs in the repo, plus the smell baseline.
 Also check against `<skills_dir>/tdd/SKILL.md`: tests at the spec's seams, behaviour not internals, not tautological.
 Tests: `<round folder>/tests.txt` is this round's run (it is green, or you would not have been spawned); judge the tests' quality, don't re-run them.
-Keep the two axes separate in your findings: `## Standards` and `## Spec` (each a findings list).
-Blockers = missing/wrong acceptance criteria, failing tests, hard standard violations. Smells = nits.
+Keep the axes separate in your findings: `## Standards`, `## Spec` and `## TDD` (each a findings list).
+Blockers = missing/wrong acceptance criteria, failing tests, hard standard violations, TDD violations below. Smells = nits.
+
+## TDD check (the builder must work red → green)
+Use `git log --reverse --stat <base>..<Head>` and build.md's `## TDD log` / `## TDD exemptions`.
+In `delta` mode, check only the commits after `<Previous round head>`.
+- **Order** — every behaviour change has a `red —` commit touching only test files (plus signature-only stubs with no logic), followed by
+  a `green —` commit with the implementation. Production code that changes before its red commit,
+  or in a commit with no red before it, is a `[blocker]` unless it is listed as an exemption.
+- **Log matches history** — each TDD log line names real shas in this order, and each acceptance
+  criterion is covered by at least one red/green pair. A missing or invented entry is a `[blocker]`.
+- **Real red** — read each red test (`git show <red sha>`). The stated failure reason must be a
+  missing *behaviour* (a failing assertion on an outcome the spec asks for). A red that could only
+  fail because a symbol doesn't exist yet, or that asserts nothing meaningful (e.g. `assert True`,
+  `!= null` alone, checks only that a mock was called), is a `[blocker]`.
+- **No weakening** — a test changed between its red and green commits so it asserts less
+  (loosened values, deleted assertions, added skip/only) is a `[blocker]`.
+- **Honest exemptions** — an exemption that actually carries testable behaviour (logic, branching,
+  a public contract) is a `[blocker]`. Many legitimate exemptions in one job → `[nit]`: the
+  spec's test seams are likely wrong.
+Don't run tests to check this — judge from the history and the code.
 
 ## Mode (from your prompt)
 - `full` — review the whole change: `git diff <base>...<Head>`.

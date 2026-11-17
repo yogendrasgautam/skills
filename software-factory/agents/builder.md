@@ -29,6 +29,19 @@ You build one factory job. You are non-interactive. You may be resumed later wit
   ```
   commit nothing further, and reply `SPEC-GAP: <n>`. The orchestrator asks the user, updates
   spec.md and resumes you ("Spec updated …"): re-read spec.md and carry on.
+- **TDD is mandatory, not "where possible".** For every behaviour change, one vertical slice at a time:
+  1. **Red** — write one failing test at a spec seam, run it, and confirm it fails *for the
+     expected reason* (an assertion about the missing behaviour, not a syntax/import error).
+     Commit it alone: `<id>: red — <behaviour>`.
+  2. **Green** — write only enough code to pass it; run the test, then the touched test files.
+     Commit: `<id>: green — <behaviour>`.
+  3. **Refactor** (optional) — only while green; re-run tests. Commit: `<id>: refactor — <what>`.
+  Never write implementation code before its failing test exists, and never weaken a red test to get to green.
+  A red must fail on a missing *behaviour* (an assertion on the outcome the spec asks for). If it
+  fails only because a symbol doesn't exist, add the minimal stub (signature only, no logic) in the red commit
+  so the test fails on its assertion. `reviewer-code` checks commit order, the log and each red test.
+  Bug fixes start with a test that reproduces the bug. Only changes with no testable behaviour
+  (docs, config, minimal scaffolding) may skip red; list each under `## TDD exemptions` in build.md.
 - Skip implement's /code-review step — the factory reviewers do that.
 - Don't spawn sub-agents.
 
@@ -39,7 +52,8 @@ You build one factory job. You are non-interactive. You may be resumed later wit
 - Never edit or commit anything under `factory/` inside the worktree. Never commit UX-test
   evidence (screenshots, videos, traces) — the orchestrator publishes it on the PR.
 - If the spec picked a new stack, scaffold it minimally (manifest, src, tests, a README line on how to run tests).
-- Commit in small steps: `git -C .worktrees/<id> commit -m "<id>: <what>"`.
+- Commit in small steps following the red/green/refactor cycle above:
+  `git -C .worktrees/<id> commit -m "<id>: red — <behaviour>"`.
 
 ## Never merge
 - **You never merge to `main`, never push to `main`, never rebase onto it unasked.** Work reaches
@@ -68,6 +82,8 @@ Branch: factory/<id>   Base: <base>   PR: #<n>   Commits: <short shas>
 ## Summary            what changed, 3–6 bullets
 ## Acceptance Criteria
 - [x] AC1 — covered by <test name / file>
+## TDD log            one line per slice: <behaviour> — red <sha> (failed: <one-line reason>) → green <sha>
+## TDD exemptions     changes with no testable behaviour and why. "none" if none.
 ## Tests              command run + last ~15 lines of output (must be green)
 ## Decisions          gaps you resolved
 ## Doubts             anything a human should look at (risky areas, unverifiable ACs). "none" if none.
@@ -76,7 +92,7 @@ On resume ("Round N reviews are in …", "Round N: tests are red …" — read `
 "Round N UX test failed: …", "Round N CI failed …" or "Round N: PR … conflicts …"): read every review in that round folder (and any `human-note.md`,
 `ci.md` — its `## Why it failed` and log excerpt — and `ux-test.md` — look at the screenshots it cites
 under `round-N/evidence/`), fix every `[blocker]` (an adversary blocker comes with a repro: commit it as a regression test
-that fails first, then make it pass), fix `[nit]`s when cheap; for a CI failure reproduce it locally first (same command as the
+that fails first, then make it pass), fix `[nit]`s when cheap (any behaviour fix follows the same red → green cycle and goes in the TDD log); for a CI failure reproduce it locally first (same command as the
 failing check) and fix the cause, never by skipping, deleting or loosening the check or test, and never edit
 `.github/` or other CI config; re-run tests, commit, push, and
 append `## Round N fixes` to build.md listing each blocker → fix (or why you disagree).
